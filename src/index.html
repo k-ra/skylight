@@ -350,8 +350,21 @@ function sunPos(){ const R = level.kind==="hq" ? 52 : 40; return { cx: W/2, cy: 
 function drawSun(time, alpha){
   const { cx, cy, R } = sunPos(), q = queue().length, pulse = REDUCED ? 1 : .94+.06*Math.sin(time*.0013);
   ctx.globalAlpha = alpha;
-  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.14)"; ctx.setLineDash([2,7]); ctx.stroke(); ctx.setLineDash([]);
-  bloom(cx,cy,(28+q*3)*pulse,"255,107,59",Math.min(.9,.5+q*.05)); flare(cx,cy,R*.9,"255,150,110",.35); core(cx,cy,2.8,"#ff6b3b");
+  // the orbit the crew rests on
+  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.18)"; ctx.setLineDash([2,7]); ctx.lineDashOffset = -time*.01; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+  // corona: wide and soft, then tight and hot
+  bloom(cx,cy,(34+q*3)*pulse,"255,107,59",Math.min(.9,.45+q*.05));
+  bloom(cx,cy,14*pulse,"255,200,150",.7);
+  // six slow spikes, turning
+  ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.translate(cx,cy); ctx.rotate(time*.00012);
+  for (let i=0;i<6;i++){ const a=i*Math.PI/3, L=R*.72*(i%2?.7:1)*pulse; const g=ctx.createLinearGradient(0,0,Math.cos(a)*L,Math.sin(a)*L);
+    g.addColorStop(0,"rgba(255,170,120,.55)"); g.addColorStop(1,"rgba(255,107,59,0)"); ctx.strokeStyle=g; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke(); }
+  ctx.restore();
+  // a thin ring, and a core that is a small star rather than a dot
+  ctx.beginPath(); ctx.arc(cx,cy,9*pulse,0,TAU); ctx.strokeStyle="rgba(255,190,140,.55)"; ctx.lineWidth=1; ctx.stroke();
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(-time*.0003); ctx.beginPath();
+  for (let i=0;i<12;i++){ const rr = i%2 ? 1.6 : 4.2, a = i*Math.PI/6; ctx.lineTo(Math.cos(a)*rr, Math.sin(a)*rr); }
+  ctx.closePath(); ctx.fillStyle="#ffd9c2"; ctx.fill(); ctx.restore();
   const idle = AGENTS.filter(g => g.state!=="active" || !g.where);
   idle.forEach((g,i) => { const ang = (i/Math.max(1,idle.length))*TAU + time*.00012 + g.seed, [x,y,d,a] = proj(cx,cy,R*(.8+.12*((i*.618)%1)),ang,0);
     ship(x,y,Math.atan2(Math.cos(a)*TILT,-Math.sin(a)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
@@ -397,13 +410,16 @@ function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2-
    right margins, each on a ray from the sun. The crew along the bottom. */
 function drawDesk(time, alpha){
   ctx.globalAlpha = alpha;
-  const { cx, cy, R } = sunPos(), items = queue(), spine = Math.min(120, W*.09), rows = Math.max(1, Math.ceil(items.length/2));
+  const { cx, cy, R } = sunPos(), items = queue(), spine = Math.min(300, W*.24), rows = Math.max(1, Math.ceil(items.length/2));
   const y0 = cy - R*TILT - 84, gap = Math.min(52, (y0-110)/rows);
   ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.95)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, cy-R*TILT-30);
   items.forEach((it,i) => {
     const left = i%2===0, row = Math.floor(i/2), x = left ? cx-spine : cx+spine, y = y0 - row*gap;
-    const sx = left ? cx-spine*.55 : cx+spine*.55;
-    ctx.beginPath(); ctx.moveTo(cx, cy-R*TILT); ctx.lineTo(sx, y); ctx.strokeStyle="rgba(255,107,59,.16)"; ctx.setLineDash([2,6]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+    const sx = left ? cx-spine*.72 : cx+spine*.72;
+    // a gentle arc, bowing outward, dots drifting toward the item
+    const ox = cx, oy = cy-R*TILT, mx = (ox+sx)/2 + (left?-1:1)*Math.abs(y-oy)*.28, my = (oy+y)/2 + 26;
+    ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(mx,my,sx,y); ctx.strokeStyle="rgba(255,107,59,.10)"; ctx.lineWidth=5; ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(mx,my,sx,y); ctx.strokeStyle="rgba(255,150,100,.55)"; ctx.setLineDash([2,7]); ctx.lineDashOffset = time*.02; ctx.lineWidth=1.2; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
     const col = it.kind==="question" ? "#8fb4ff" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="light" ? "255,255,255" : "255,107,59";
     bloom(sx,y,18,rgb,.35);
     if (it.kind==="light") core(sx,y,3,col); else { ctx.beginPath(); ctx.arc(sx,y,3,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
