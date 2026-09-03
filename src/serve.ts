@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument, YAMLSeq } from "yaml";
 import { readSky, type Sky } from "./read.ts";
+import { gather, decide } from "./gather.ts";
 import { Tailer, type Agent } from "./tail.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +79,22 @@ const server = createServer((req, res) => {
         const { kind, area, text, at } = JSON.parse(body);
         if (typeof text !== "string" || !text.trim()) throw new Error("say what the star is");
         const err = place(String(kind), area ?? null, text.trim(), Array.isArray(at) && at.length === 2 ? [Number(at[0]), Number(at[1])] : null);
+        if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
+        sky = readSky(ROOT); push();
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
+    }); return;
+  }
+  if (url === "/api/gather" && req.method === "POST") {
+    // slow — a model call — so answer when it is done and push to everyone
+    const r = gather(ROOT); sky = readSky(ROOT); push();
+    res.writeHead(r.error ? 400 : 200, { "content-type": "application/json" }); return res.end(JSON.stringify(r));
+  }
+  if (url === "/api/proposal" && req.method === "POST") {
+    let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+      try {
+        const { name, action } = JSON.parse(body);
+        const err = decide(ROOT, String(name), action === "accept" ? "accept" : "veto");
         if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
         sky = readSky(ROOT); push();
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
