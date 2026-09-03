@@ -257,7 +257,7 @@ function whereIs(n){
   if (!n.area) return null;
   if (level.kind==="all"){ const i = SYSTEMS.findIndex(s => s.name===n.sys || s.areas.some(a=>a.name===n.area)); const c = placed.centers[i]; return c ? [c.x,c.y] : null; }
   if (level.kind==="system"){ const a = level.sys.areas.find(a=>a.name===n.area); if (!a) return null;
-    const R=Math.min((W-120)/2,(H-110)/2/TILT)-70; const [x,y]=proj(W/2,H/2+34,R*RR[a.ring],a.ang,motion); return [x,y]; }
+    const R=Math.min((W-120)/2,(H-170)/2/TILT)-60; const [x,y]=proj(W/2,H/2-24,R*RR[a.ring],a.ang,motion); return [x,y]; }
   if (level.kind==="area" && level.area.name===n.area) return [constellation(level.area).cx, constellation(level.area).cy];
   return null;
 }
@@ -346,22 +346,20 @@ function drawSystem(s, cx, cy, R, detailed, time, alpha, clickable){
    The orchestrator sits at the very top of every screen, half over the
    horizon. Its glow is how much is waiting on you. Click it and HQ opens:
    what waits fans out beneath it, aligned to the margins. */
-function sunPos(){ const R = level.kind==="hq" ? 150 : 96; return { cx: W/2, cy: -R*.42, R }; }
+function sunPos(){ const R = level.kind==="hq" ? 52 : 40; return { cx: W/2, cy: H-84, R }; }
 function drawSun(time, alpha){
-  const { cx, cy, R } = sunPos(), q = queue().length, pulse = REDUCED ? 1 : .96+.04*Math.sin(time*.0011);
+  const { cx, cy, R } = sunPos(), q = queue().length, pulse = REDUCED ? 1 : .94+.06*Math.sin(time*.0013);
   ctx.globalAlpha = alpha;
-  bloom(cx, cy, R*(1.4+q*.06)*pulse, "255,107,59", Math.min(.85,.35+q*.06));
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = "#ff6b3b"; ctx.fill();
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); const g = ctx.createRadialGradient(cx,cy,R*.5,cx,cy,R); g.addColorStop(0,"rgba(255,140,90,0)"); g.addColorStop(1,"rgba(120,40,20,.55)"); ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.14)"; ctx.setLineDash([2,7]); ctx.stroke(); ctx.setLineDash([]);
+  bloom(cx,cy,(28+q*3)*pulse,"255,107,59",Math.min(.9,.5+q*.05)); flare(cx,cy,R*.9,"255,150,110",.35); core(cx,cy,2.8,"#ff6b3b");
   const idle = AGENTS.filter(g => g.state!=="active" || !g.where);
-  idle.forEach((g,i) => { const a = Math.PI*.15 + (Math.PI*.7)*((i+.5)/idle.length) + (REDUCED?0:Math.sin(time*.0004+g.seed)*.08);
-    const x = cx+Math.cos(a)*R*1.22, y = cy+Math.sin(a)*R*1.22; if (y < 8) return;
-    ship(x,y,a+Math.PI/2,5,"#ff6b3b",.55); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
+  idle.forEach((g,i) => { const ang = (i/Math.max(1,idle.length))*TAU + time*.00012 + g.seed, [x,y,d,a] = proj(cx,cy,R*(.8+.12*((i*.618)%1)),ang,0);
+    ship(x,y,Math.atan2(Math.cos(a)*TILT,-Math.sin(a)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
   if (level.kind !== "hq"){
     ctx.textAlign="center"; ctx.font=font(9.5, q?500:400); ctx.fillStyle = q ? "rgba(255,150,100,.95)" : "rgba(255,107,59,.55)";
-    ctx.fillText(q ? `${q} waiting on you` : "nothing waiting", cx, cy+R+18);
-    if (lastTurn){ ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText(("last turn · "+lastTurn).toUpperCase(), cx, cy+R+32); }
-    if (alpha>.5) nodes.push({ x:cx, y:Math.max(cy, 10), r:R*.9, orch:true });
+    ctx.fillText(q ? `${q} waiting on you` : "nothing waiting", cx, cy-R*TILT-18);
+    if (lastTurn){ ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText(("last turn · "+lastTurn).toUpperCase(), cx, cy-R*TILT-32); }
+    if (alpha>.5) nodes.push({ x:cx, y:cy, r:R*.7, orch:true, ell:true });
   }
   ctx.globalAlpha = 1;
 }
@@ -370,7 +368,7 @@ function drawSun(time, alpha){
 const ARR = [ [[.24,.34],[.5,.72],[.76,.34]], [[.24,.66],[.5,.30],[.76,.66]], [[.22,.28],[.5,.5],[.78,.72]], [[.78,.28],[.5,.5],[.22,.72]], [[1/6,.5],[.5,.5],[5/6,.5]] ];
 let placed = { R:0, centers:[] };
 function layoutSky(){
-  const n = Math.max(1, SYSTEMS.length||3), top=96, pad=40, head=64, w=W, h=H-top; let best=null;
+  const n = Math.max(1, SYSTEMS.length||3), top=56, pad=36, head=52, w=W, h=H-top-118; let best=null;
   const arrs = n===3 ? ARR : [Array.from({length:n},(_,i)=>[(i+.5)/n,.5])];
   for (const arr of arrs){
     const c = arr.map(([x,y]) => ({ x:x*w, y:top+y*h })); let R = Infinity;
@@ -392,37 +390,32 @@ function drawAll(time, alpha){
   });
   ctx.globalAlpha=1;
 }
-function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2+34, Math.min((W-120)/2,(H-110)/2/TILT)-70, true, time, alpha, false); ctx.globalAlpha=1; }
+function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2-24, Math.min((W-120)/2,(H-170)/2/TILT)-60, true, time, alpha, false); ctx.globalAlpha=1; }
 
 /* ============================================================ HQ =========
    The sun, opened. What waits on you in two columns, aligned to the left and
    right margins, each on a ray from the sun. The crew along the bottom. */
 function drawDesk(time, alpha){
   ctx.globalAlpha = alpha;
-  const { cx, cy, R } = sunPos(), items = queue(), L = Math.max(60, W*.1), Rm = W - L, y0 = R*.62 + 70, gap = Math.min(52, (H-y0-150)/Math.max(1, Math.ceil(items.length/2)));
-  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.95)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, R*.62+34);
+  const { cx, cy, R } = sunPos(), items = queue(), spine = Math.min(120, W*.09), rows = Math.max(1, Math.ceil(items.length/2));
+  const y0 = cy - R*TILT - 84, gap = Math.min(52, (y0-110)/rows);
+  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.95)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, cy-R*TILT-30);
   items.forEach((it,i) => {
-    const left = i%2===0, row = Math.floor(i/2), x = left ? L : Rm, y = y0 + row*gap;
-    ctx.beginPath(); ctx.moveTo(cx, cy+R*.6); ctx.lineTo(x + (left?-14:14), y); ctx.strokeStyle="rgba(255,107,59,.16)"; ctx.setLineDash([2,6]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+    const left = i%2===0, row = Math.floor(i/2), x = left ? cx-spine : cx+spine, y = y0 - row*gap;
+    const sx = left ? cx-spine*.55 : cx+spine*.55;
+    ctx.beginPath(); ctx.moveTo(cx, cy-R*TILT); ctx.lineTo(sx, y); ctx.strokeStyle="rgba(255,107,59,.16)"; ctx.setLineDash([2,6]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
     const col = it.kind==="question" ? "#8fb4ff" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="light" ? "255,255,255" : "255,107,59";
-    const sx = x + (left?-14:14); bloom(sx,y,18,rgb,.35);
+    bloom(sx,y,18,rgb,.35);
     if (it.kind==="light") core(sx,y,3,col); else { ctx.beginPath(); ctx.arc(sx,y,3,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
-    ctx.textAlign = left ? "left" : "right";
+    ctx.textAlign = left ? "right" : "left";
     ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.92)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, x, y-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():""), x, y+10);
     if (alpha>.5) nodes.push({ x:sx, y, r:16, desk:it, tx:x, left });
   });
-  // the crew, along the bottom, by callsign
-  const crewList = AGENTS.slice().sort((a,b)=>(a.state==="active"?0:1)-(b.state==="active"?0:1));
-  const cyy = H - 96, gapc = Math.min(110, (W-2*L)/Math.max(1,crewList.length));
-  crewList.forEach((g,i) => { const x = cx + (i-(crewList.length-1)/2)*gapc, y = cyy + (REDUCED?0:Math.sin(time*.0012+i)*3);
-    if (g.state==="active") bloom(x,y,20,"255,107,59",.45); ship(x,y,-Math.PI/2,7,"#ff6b3b",g.state==="active"?1:.4);
-    ctx.textAlign="center"; ctx.font=font(9); ctx.fillStyle=g.state==="active"?"rgba(255,140,90,.9)":"rgba(135,146,161,.6)"; ctx.fillText(g.call.toUpperCase()+(g.where?" · "+g.where.area.toUpperCase():" · home"), x, y+22);
-    if (alpha>.5) nodes.push({ x,y,r:16, agent:g }); });
-  if (IDEAS.length >= 2){ const gx = Rm, gy = y0 + Math.ceil(items.length/2)*gap + 6;
-    ctx.textAlign="right"; ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.7)"; ctx.fillText(`${IDEAS.length} loose ideas`, gx, gy-4);
+  if (IDEAS.length >= 2){ const gx = cx, gy = y0 - rows*gap - 6;
+    ctx.textAlign="center"; ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.7)"; ctx.fillText(`${IDEAS.length} loose ideas`, gx, gy-4);
     ctx.font=font(9); ctx.fillStyle="#ff6b3b"; ctx.fillText("ASK AN AGENT TO SORT THEM INTO FEATURES", gx, gy+10);
-    if (alpha>.5) nodes.push({ x:gx-60, y:gy, r:70, gather:true }); }
+    if (alpha>.5) nodes.push({ x:gx, y:gy, r:70, gather:true }); }
   ctx.globalAlpha = 1;
 }
 /* answering, right on the item */
@@ -454,7 +447,7 @@ function constellation(a){
   const items = a.items.map((it,i)=>({...it, i}));
   let seed = 1000 + a.name.length*97 + a.name.charCodeAt(0);
   const rnd = () => (seed=(seed*16807)%2147483647)/2147483647;
-  const cx=W/2, cy=H*.56, Rx=Math.min(W*.44,740), Ry=Math.min(H*.34,400);
+  const cx=W/2, cy=H*.48, Rx=Math.min(W*.44,740), Ry=Math.min(H*.32,380);
   const alpha = { kind:"alpha", text:a.name, x:cx, y:cy, i:-1, tw:0 };
   const pts = items.map((it,j) => {
     const g = j*2.39996 + rnd()*.6, rr = .45 + rnd()*.55;
@@ -475,7 +468,7 @@ function constellation(a){
   if (pts.length){
     const lw = (p) => p.text.length*6.6+14;
     const leftW = Math.max(0, ...pts.filter(p => p.x < cx-40).map(lw)), rightW = Math.max(0, ...pts.filter(p => p.x >= cx-40).map(lw));
-    const L = 40 + leftW, Rm = 60 + rightW, T=150, B=70;
+    const L = 40 + leftW, Rm = 60 + rightW, T=70, B=150;
     let x0=Math.min(cx,...pts.map(p=>p.x)), x1=Math.max(cx,...pts.map(p=>p.x)), y0=Math.min(cy,...pts.map(p=>p.y)), y1=Math.max(cy,...pts.map(p=>p.y));
     const sc=Math.min(1,(W-L-Rm)/Math.max(1,x1-x0),(H-T-B)/Math.max(1,y1-y0));
     for (const p of pts){ if (p.fixed) continue; p.x = cx + (p.x-cx)*sc; p.y = cy + (p.y-cy)*sc; }
@@ -549,7 +542,7 @@ function outside(x, y){
   // every side — so there is always room to double-click a star into place
   const mx = Math.max(120, W*.1), my = Math.max(80, H*.1);
   if (level.kind === "hq") return false;
-  if (level.kind === "system"){ const cx=W/2, cy=H/2+34, R=Math.min((W-120)/2,(H-110)/2/TILT)-70; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
+  if (level.kind === "system"){ const cx=W/2, cy=H/2-24, R=Math.min((W-120)/2,(H-170)/2/TILT)-60; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
   if (level.kind === "area"){ const C=constellation(level.area); const xs=[C.cx,...C.pts.map(p=>p.x)], ys=[C.cy,...C.pts.map(p=>p.y)];
     const x0=Math.min(...xs)-mx, x1=Math.max(...xs)+200+mx, y0=Math.min(...ys)-my, y1=Math.max(...ys)+my; return x < x0 || x > x1 || y < y0 || y > y1; }
   return false;
