@@ -1,0 +1,65 @@
+# Skylight
+
+A project, drawn as a sky.
+
+Three north stars — the parts of your project — with their areas orbiting
+them at how done they are. Closer in is more done. Agents are ships: idle ones
+orbit the orange star in the middle, working ones are out at the area they are
+touching. Ideas are loose stars you pin where you like.
+
+Everything is read from the repository and from Claude Code's own transcripts.
+One file is written by a person — `sky.yaml` — and it names the stars, the
+areas, and which files belong to each. Everything else derives.
+
+## Run it
+
+```bash
+npm install
+npm start -- /path/to/your/repo      # the repo must hold a sky.yaml
+```
+
+Open http://127.0.0.1:4340. `npm run export` writes a standalone `snapshot.html`.
+
+## sky.yaml
+
+```yaml
+name: trellis
+goal: one sentence — what the whole thing is for
+
+live:              # areas a person has confirmed are tested and live
+  - lint
+
+ideas:             # loose stars
+  - A bookshelf of every version
+
+stars:
+  - name: frontend
+    areas:
+      - name: canvas
+        about: One surface, laid out by the system.
+        files: [src/web/src/canvas.tsx]
+        tests: [test/canvas.test.ts]
+        done:  [ "Frameless cards | a screen just exists on the canvas" ]
+        todo:  [ "Layout tests" ]
+        open:  [ "Keep the history view?" ]
+        explore: [ "Not taken · one unified canvas" ]
+```
+
+`"Short | the longer line"` — the short half sits on the star, the long half
+shows on hover.
+
+## What is derived
+
+| on screen | from |
+|---|---|
+| which ring an area orbits | no files → planned · thin → started · code → built · tests → tested · listed under `live` → live |
+| done · to do · open · exploration | `sky.yaml`, plus `TODO` markers in code, plus unmerged branches |
+| agents, and where they are | `~/.claude/projects/**/*.jsonl` — every Claude Code session that touched the repo |
+
+## The gesture
+
+Click a system to open it. Click an area for its constellation. Double-click
+empty sky to pin an idea where you clicked; in a constellation the place
+decides what kind of star it is — above the alpha is to do, left is a
+question, right an exploration, below is done. It is written straight into
+`sky.yaml`.
