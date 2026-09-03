@@ -350,8 +350,9 @@ function sunPos(){ const R = level.kind==="hq" ? 52 : 40; return { cx: W/2, cy: 
 function drawSun(time, alpha){
   const { cx, cy, R } = sunPos(), q = queue().length, pulse = REDUCED ? 1 : .94+.06*Math.sin(time*.0013);
   ctx.globalAlpha = alpha;
-  // the orbit the crew rests on
-  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.18)"; ctx.setLineDash([2,7]); ctx.lineDashOffset = -time*.01; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+  // two orbits the crew rests on, turning against each other
+  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.2)"; ctx.setLineDash([2,7]); ctx.lineDashOffset = -time*.01; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx,cy,R*1.6,R*1.6*TILT*.8,-.18,0,TAU); ctx.strokeStyle="rgba(255,107,59,.12)"; ctx.lineDashOffset = time*.008; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
   // corona: wide and soft, then tight and hot
   bloom(cx,cy,(34+q*3)*pulse,"255,107,59",Math.min(.9,.45+q*.05));
   bloom(cx,cy,14*pulse,"255,200,150",.7);
@@ -366,12 +367,12 @@ function drawSun(time, alpha){
   for (let i=0;i<12;i++){ const rr = i%2 ? 1.6 : 4.2, a = i*Math.PI/6; ctx.lineTo(Math.cos(a)*rr, Math.sin(a)*rr); }
   ctx.closePath(); ctx.fillStyle="#ffd9c2"; ctx.fill(); ctx.restore();
   const idle = AGENTS.filter(g => g.state!=="active" || !g.where);
-  idle.forEach((g,i) => { const ang = (i/Math.max(1,idle.length))*TAU + time*.00012 + g.seed, [x,y,d,a] = proj(cx,cy,R*(.8+.12*((i*.618)%1)),ang,0);
-    ship(x,y,Math.atan2(Math.cos(a)*TILT,-Math.sin(a)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
+  idle.forEach((g,i) => { const outer = i%2===1, rr = outer ? R*1.6 : R, ang = (i/Math.max(1,idle.length))*TAU + time*(outer?-.00009:.00013) + g.seed;
+    const x = cx+Math.cos(ang)*rr, y = cy+Math.sin(ang)*rr*(outer?TILT*.8:TILT), d = (Math.sin(ang)+1)/2;
+    ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
   if (level.kind !== "hq"){
-    ctx.textAlign="center"; ctx.font=font(9.5, q?500:400); ctx.fillStyle = q ? "rgba(255,150,100,.95)" : "rgba(255,107,59,.55)";
-    ctx.fillText(q ? `${q} waiting on you` : "nothing waiting", cx, cy-R*TILT-18);
-    if (lastTurn){ ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText(("last turn · "+lastTurn).toUpperCase(), cx, cy-R*TILT-32); }
+    if (q){ ctx.textAlign="center"; ctx.font=font(11,500); ctx.fillStyle="rgba(255,170,120,.95)"; ctx.fillText(String(q), cx, cy-R*TILT-16); }
+    if (lastTurn){ ctx.textAlign="center"; ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.55)"; ctx.fillText(lastTurn.toUpperCase(), cx, cy-R*TILT-30); }
     if (alpha>.5) nodes.push({ x:cx, y:cy, r:R*.7, orch:true, ell:true });
   }
   ctx.globalAlpha = 1;
@@ -410,28 +411,31 @@ function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2-
    right margins, each on a ray from the sun. The crew along the bottom. */
 function drawDesk(time, alpha){
   ctx.globalAlpha = alpha;
-  const { cx, cy, R } = sunPos(), items = queue(), spine = Math.min(300, W*.24), rows = Math.max(1, Math.ceil(items.length/2));
-  const y0 = cy - R*TILT - 84, gap = Math.min(52, (y0-110)/rows);
-  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.95)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, cy-R*TILT-30);
+  const { cx, cy, R } = sunPos(), items = queue();
+  if (IDEAS.length >= 2) items.push({ kind:"sort", text:`${IDEAS.length} loose ideas`, more:"an agent reads them and proposes features", action:"ask an agent to sort them" });
+  const rx = Math.min(W*.40, 560), ry = Math.min(cy-140, H*.58), n = items.length;
+  ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,Math.PI*1.02,Math.PI*1.98); ctx.strokeStyle="rgba(255,107,59,.14)"; ctx.setLineDash([1.5,9]); ctx.lineDashOffset=-time*.006; ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
+  ctx.beginPath(); ctx.ellipse(cx,cy,rx*.86,ry*.86,0,Math.PI*1.04,Math.PI*1.96); ctx.strokeStyle="rgba(255,107,59,.07)"; ctx.setLineDash([1.5,9]); ctx.stroke(); ctx.setLineDash([]);
+  if (!n){ ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.8)"; ctx.fillText("NOTHING IS WAITING ON YOU", cx, cy-ry*.5); }
   items.forEach((it,i) => {
-    const left = i%2===0, row = Math.floor(i/2), x = left ? cx-spine : cx+spine, y = y0 - row*gap;
-    const sx = left ? cx-spine*.72 : cx+spine*.72;
-    // a gentle arc, bowing outward, dots drifting toward the item
-    const ox = cx, oy = cy-R*TILT, mx = (ox+sx)/2 + (left?-1:1)*Math.abs(y-oy)*.28, my = (oy+y)/2 + 26;
-    ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(mx,my,sx,y); ctx.strokeStyle="rgba(255,107,59,.10)"; ctx.lineWidth=5; ctx.stroke(); ctx.restore();
-    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(mx,my,sx,y); ctx.strokeStyle="rgba(255,150,100,.55)"; ctx.setLineDash([2,7]); ctx.lineDashOffset = time*.02; ctx.lineWidth=1.2; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    const a0 = Math.PI*1.06, a1 = Math.PI*1.94, ang = n===1 ? Math.PI*1.5 : a0 + (a1-a0)*(i/(n-1));
+    const x = cx+Math.cos(ang)*rx, y = cy+Math.sin(ang)*ry, nx = Math.cos(ang), ny = Math.sin(ang);
+    const mx = (cx+x)/2 + nx*40, my = (cy+y)/2 + 30;
+    ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,107,59,.08)"; ctx.lineWidth=4; ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,150,100,.45)"; ctx.setLineDash([2,7]); ctx.lineDashOffset=time*.02; ctx.lineWidth=1.1; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
     const col = it.kind==="question" ? "#8fb4ff" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="light" ? "255,255,255" : "255,107,59";
-    bloom(sx,y,18,rgb,.35);
-    if (it.kind==="light") core(sx,y,3,col); else { ctx.beginPath(); ctx.arc(sx,y,3,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
-    ctx.textAlign = left ? "right" : "left";
-    ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.92)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, x, y-4);
-    ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():""), x, y+10);
-    if (alpha>.5) nodes.push({ x:sx, y, r:16, desk:it, tx:x, left });
+    const hot = hover && hover.desk===it;
+    bloom(x,y,hot?28:18,rgb,hot?.6:.35);
+    if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
+    const top = Math.abs(nx) < .22, left = nx < 0;
+    ctx.textAlign = top ? "center" : left ? "right" : "left";
+    const tx = top ? x : x + nx*16, ty = top ? y-14 : y + ny*8;
+    const sub = it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
+    ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, tx, ty-4);
+    ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
+    const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = top ? tx-w/2 : left ? tx-w : tx;
+    if (alpha>.5) nodes.push({ x, y, rect:[Math.min(bx,x-10), Math.min(ty-18,y-10), Math.max(bx+w,x+10)-Math.min(bx,x-10), Math.max(ty+16,y+10)-Math.min(ty-18,y-10)], desk:it });
   });
-  if (IDEAS.length >= 2){ const gx = cx, gy = y0 - rows*gap - 6;
-    ctx.textAlign="center"; ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.7)"; ctx.fillText(`${IDEAS.length} loose ideas`, gx, gy-4);
-    ctx.font=font(9); ctx.fillStyle="#ff6b3b"; ctx.fillText("ASK AN AGENT TO SORT THEM INTO FEATURES", gx, gy+10);
-    if (alpha>.5) nodes.push({ x:gx, y:gy, r:70, gather:true }); }
   ctx.globalAlpha = 1;
 }
 /* answering, right on the item */
@@ -565,7 +569,9 @@ function outside(x, y){
 }
 function pick(x, y){
   let best=null, bd=1e9;
-  for (const n of nodes){ const d = n.ell ? Math.hypot(n.x-x,(n.y-y)/TILT) : Math.hypot(n.x-x,n.y-y); if (d<n.r && d<bd){ bd=d; best=n; } }
+  for (const n of nodes){
+    if (n.rect){ const [rx,ry,rw,rh]=n.rect; if (x>=rx && x<=rx+rw && y>=ry && y<=ry+rh){ const d=Math.hypot(n.x-x,n.y-y); if (d<bd){ bd=d; best=n; } } continue; }
+    const d = n.ell ? Math.hypot(n.x-x,(n.y-y)/TILT) : Math.hypot(n.x-x,n.y-y); if (d<n.r && d<bd){ bd=d; best=n; } }
   return best;
 }
 function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="hq") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; drawTracker(time, alpha); } }
@@ -588,9 +594,9 @@ function draw(now){
     ctx.beginPath(); ctx.arc(planting.x,planting.y,3.4,0,TAU); ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.setLineDash([1.6,1.6]); ctx.stroke(); ctx.setLineDash([]); }
   cv.classList.toggle("hand", !!hover&&(hover.sys||hover.area||hover.orch||hover.proposal||hover.desk||hover.gather));
   if (hover && hover.polaris){ ctx.beginPath(); ctx.arc(hover.x,hover.y,14,0,TAU); ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=1; ctx.stroke(); }
-  if (hover && !hover.sys){ ctx.beginPath(); ctx.arc(hover.x,hover.y,10,0,TAU); ctx.strokeStyle=hover.agent?"rgba(255,107,59,.8)":"rgba(226,234,244,.7)"; ctx.lineWidth=1; ctx.stroke(); }
-  if (hover && hover.orch && crew.hidden){ tip.innerHTML = `<span style="color:#ff6b3b">the crew</span><small>${AGENTS.filter(g=>g.state==="active").length} working · ${AGENTS.filter(g=>g.state==="idle").length} idle · click</small>`; tip.classList.add("on"); tip.style.transform="translate(0,-50%)"; tip.style.left=(mouse.x+16)+"px"; tip.style.top=mouse.y+"px"; }
-  else if (hover && !hover.sys){
+  if (hover && !hover.sys && !hover.desk){ ctx.beginPath(); ctx.arc(hover.x,hover.y,10,0,TAU); ctx.strokeStyle=hover.agent?"rgba(255,107,59,.8)":"rgba(226,234,244,.7)"; ctx.lineWidth=1; ctx.stroke(); }
+  if (hover && hover.orch){ const q=queue().length; tip.innerHTML = `<span style="color:#ff6b3b">hq</span><small>${q} waiting on you${lastTurn?" · last turn: "+esc(lastTurn):""} · click</small>`; tip.classList.add("on"); tip.style.transform="translate(0,-50%)"; tip.style.left=(mouse.x+16)+"px"; tip.style.top=mouse.y+"px"; }
+  else if (hover && !hover.sys && !hover.desk){
     const ago = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
     const g = hover.agent;
     tip.innerHTML = hover.item ? `${esc(hover.item.text)}${hover.item.more?`<em>${esc(hover.item.more)}</em>`:""}<small>${KIND[hover.item.kind]}${hover.item.src?" · from "+esc(hover.item.src):""}</small>`
@@ -686,7 +692,7 @@ cv.addEventListener("click",(e)=>{
   if (planting){ unplant(); return; }
   if (!decideEl.hidden){ decideEl.hidden = true; if (!(hover && hover.desk)) return; }
   if (hover && hover.orch){ if (level.kind!=="hq") go({ kind:"hq" }); return; }
-  if (hover && hover.desk){ showDeskItem(hover.desk, hover.x, hover.y); return; }
+  if (hover && hover.desk){ if (hover.desk.kind==="sort") runGather(); else showDeskItem(hover.desk, hover.x, hover.y); return; }
   if (hover && hover.gather){ runGather(); return; }
   if (hover && hover.sys) go({ kind:"system", sys:hover.sys });
   else if (hover && hover.area && level.kind==="system") go({ kind:"area", sys:level.sys, area:hover.area });
