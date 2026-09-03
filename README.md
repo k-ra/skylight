@@ -1,6 +1,6 @@
 # Skylight
 
-A project, drawn as a sky.
+A project, drawn as a sky. The galaxy is the full view; a star system is an architecture department; a constellation is one feature.
 
 Three north stars — the parts of your project — with their areas orbiting
 them at how done they are. Closer in is more done. Agents are ships: idle ones
