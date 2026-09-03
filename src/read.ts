@@ -8,7 +8,7 @@ import { existsSync, globSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse } from "yaml";
 
-export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number] };
+export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string };
 export type Area = {
   name: string; about: string; ring: number; ticks: number; files: number; lines: number;
   paths: string[]; items: Item[]; lastTouched: number | null;
@@ -35,11 +35,15 @@ function split(s: string): { text: string; more: string } {
   const i = s.indexOf(" | ");
   return i < 0 ? { text: s.trim(), more: "" } : { text: s.slice(0, i).trim(), more: s.slice(i + 3).trim() };
 }
-function entry(e: any): { text: string; more: string; at?: [number, number] } {
+function entry(e: any): { text: string; more: string; at?: [number, number]; when?: string; by?: string; answer?: string } {
   if (typeof e === "string") return split(e);
-  const base = split(String(e?.text ?? ""));
+  const base: any = split(String(e?.text ?? ""));
   const at = Array.isArray(e?.at) && e.at.length === 2 ? [Number(e.at[0]), Number(e.at[1])] as [number, number] : undefined;
-  return at ? { ...base, at } : base;
+  if (at) base.at = at;
+  if (e?.when) base.when = String(e.when);
+  if (e?.by) base.by = String(e.by);
+  if (e?.answer) base.answer = String(e.answer);
+  return base;
 }
 
 function glob(root: string, patterns: string[] | undefined): string[] {
@@ -105,7 +109,12 @@ export function readSky(root: string): Sky {
       const ring = live.has(a.name) ? 4 : ticks > 0 ? 3 : paths.length ? (lines < 80 ? 1 : 2) : 0;
       const items: Item[] = [];
       for (const k of ["done", "todo", "open", "explore"] as const)
-        for (const s of a[k] ?? []) items.push({ kind: k, ...entry(s), src: "sky.yaml" });
+        for (const s of a[k] ?? []) {
+          const e = entry(s);
+          // a question with an answer is a done star; the answer is what it says on hover
+          if (k === "open" && e.answer) { items.push({ kind: "done", text: e.text, more: e.answer, at: e.at, when: e.when, by: e.by, src: "answered" }); continue; }
+          const { answer: _drop, ...rest } = e; items.push({ kind: k, ...rest, src: "sky.yaml" });
+        }
       items.push(...todosIn(root, paths));
       for (const b of branches) {
         const hit = b.files.filter((f) => paths.includes(f));

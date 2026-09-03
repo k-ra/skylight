@@ -52,13 +52,14 @@ for (const d of ["src", "test", "sky.yaml", ".git/refs/heads"]) {
  * so the comments a person wrote stay where they were.
  */
 function place(kind: string, area: string | null, text: string, at: [number, number] | null): string | null {
-  const node: any = at ? { text, at: [Number(at[0].toFixed(3)), Number(at[1].toFixed(3))] } : text;
+  const node: any = { text, when: new Date().toISOString(), by: "person" };
+  if (at) node.at = [Number(at[0].toFixed(3)), Number(at[1].toFixed(3))];
   const file = join(ROOT, "sky.yaml");
   const doc = parseDocument(readFileSync(file, "utf8"));
   const seqAt = (map: any, key: string): YAMLSeq => {
     let seq = map.get(key, true); if (!seq) { seq = new YAMLSeq(); map.set(key, seq); } return seq;
   };
-  if (kind === "idea") { seqAt(doc as any, "ideas").add(node); }
+  if (kind === "idea") { seqAt(doc as any, "ideas").add(at ? node : text); }
   else {
     if (!["done", "todo", "open", "explore"].includes(kind)) return "unknown kind";
     let found: any = null;
@@ -69,6 +70,33 @@ function place(kind: string, area: string | null, text: string, at: [number, num
   }
   writeFileSync(file, doc.toString());
   return null;
+}
+
+/** Light a star: the one list only a person may touch. */
+function light(area: string): string | null {
+  const file = join(ROOT, "sky.yaml");
+  const doc = parseDocument(readFileSync(file, "utf8"));
+  const live = doc.get("live", true) as YAMLSeq | undefined;
+  if (live && (live.items as any[]).some((i) => String(i?.value ?? i) === area)) return `${area} is already live`;
+  if (!live) doc.set("live", [area]); else live.add(area);
+  writeFileSync(file, doc.toString()); return null;
+}
+/** Answer a question: the open entry keeps its text and gains the answer, when, by. */
+function answer(area: string, question: string, text: string): string | null {
+  if (!text) return "say the answer";
+  const file = join(ROOT, "sky.yaml");
+  const doc = parseDocument(readFileSync(file, "utf8"));
+  for (const star of (doc.get("stars", true) as YAMLSeq).items as any[])
+    for (const a of (star.get("areas", true) as YAMLSeq).items as any[]) {
+      if (a.get("name") !== area) continue;
+      const open = a.get("open", true) as YAMLSeq | undefined; if (!open) return "no questions here";
+      const idx = (open.items as any[]).findIndex((i) => { const v = i?.get ? i.get("text") : (i?.value ?? i); return String(v).split(" | ")[0].trim() === question; });
+      if (idx < 0) return "no such question";
+      const old = (open.items as any[])[idx]; const textOld = old?.get ? old.get("text") : (old?.value ?? old);
+      open.set(idx, { text: String(textOld), answer: text, when: new Date().toISOString(), by: "person" });
+      writeFileSync(file, doc.toString()); return null;
+    }
+  return `no area called ${area}`;
 }
 
 const server = createServer((req, res) => {
@@ -89,6 +117,17 @@ const server = createServer((req, res) => {
     // slow — a model call — so answer when it is done and push to everyone
     const r = gather(ROOT); sky = readSky(ROOT); push();
     res.writeHead(r.error ? 400 : 200, { "content-type": "application/json" }); return res.end(JSON.stringify(r));
+  }
+  if ((url === "/api/light" || url === "/api/answer") && req.method === "POST") {
+    let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+      try {
+        const b = JSON.parse(body);
+        const err = url === "/api/light" ? light(String(b.area)) : answer(String(b.area), String(b.question), String(b.text ?? "").trim());
+        if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
+        sky = readSky(ROOT); push();
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
+    }); return;
   }
   if (url === "/api/proposal" && req.method === "POST") {
     let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
