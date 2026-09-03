@@ -9,7 +9,7 @@
   html,body { height:100%; }
   body { margin:0; background:var(--void); color:var(--ink); overflow:hidden; font-family:"IBM Plex Mono",ui-monospace,monospace; }
   canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; cursor:none; }
-  .bar { position:fixed; top:0; left:0; right:0; z-index:8; display:flex; align-items:center; gap:14px; padding:15px 22px;
+  .bar { position:fixed; bottom:0; left:0; right:0; z-index:8; display:flex; align-items:center; gap:14px; padding:15px 22px;
          font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); pointer-events:none; }
   .bar b { color:var(--ink); font-weight:500; }
   .bar .mark { pointer-events:auto; width:22px; height:22px; display:inline-flex; cursor:default; }
@@ -41,7 +41,7 @@
   .bar .live { display:inline-flex; align-items:center; gap:7px; color:var(--faint); }
   .bar .live i { width:6px; height:6px; border-radius:50%; background:var(--agent); box-shadow:0 0 8px var(--agent); }
   .bar .live.off i { background:var(--faint); box-shadow:none; }
-  .panel { position:fixed; right:22px; top:52px; z-index:8; font-size:10.5px; letter-spacing:.06em; color:var(--faint);
+  .panel { position:fixed; right:22px; bottom:56px; z-index:8; font-size:10.5px; letter-spacing:.06em; color:var(--faint);
            background:rgba(5,7,11,.95); border:1px solid rgba(226,234,244,.12); padding:12px 14px; width:min(380px, calc(100vw - 44px)); }
   .panel[hidden] { display:none; }
   .panel h4 { margin:0 0 10px; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:400; }
@@ -98,8 +98,15 @@
 const RINGS = ["planned","started","built","tested","live"];
 const KIND = { done:"done", todo:"to do", open:"open question", explore:"exploration" };
 let PROPOSALS = [];
+/* a snapshot has no server to write to, so what you place is kept in this
+   browser only — marked as such, and gone if you clear the site's data */
+const LOCAL_KEY = () => "skylight-local:" + (NAME||"sky");
+function localStars(){ try { return JSON.parse(localStorage.getItem(LOCAL_KEY())||"[]"); } catch { return []; } }
+function keepLocal(star){ try { const all = localStars(); all.push(star); localStorage.setItem(LOCAL_KEY(), JSON.stringify(all)); } catch {} }
 let SYSTEMS = [], IDEAS = [], AGENTS = [], AREA_OF = {}, ROOT = "", FILE = "sky.yaml", SNAPSHOT = false, GOAL = "", NAME = "";
 const angles = new Map();
+const CALLS = ["vega","altair","deneb","rigel","spica","mira","sirius","antares","capella","procyon","castor","pollux","alcor","mizar","thuban","lyra","vela","ara"];
+const callsign = (id) => { let h = 0; for (const c of id) h = (h*31 + c.charCodeAt(0)) >>> 0; return CALLS[h % CALLS.length]; };
 
 function load(data){
   const sky = data.sky; ROOT = data.root || ""; FILE = data.file || "sky.yaml"; GOAL = sky.goal || ""; NAME = sky.name || "sky";
@@ -115,11 +122,15 @@ function load(data){
   }));
   for (const s of SYSTEMS) for (const a of s.areas) a.sys = s;
   IDEAS = sky.ideas.map((t,i) => ({ text:t.text, more:t.more, at:t.at, seed:i*1.7+.3 }));
+  if (SNAPSHOT) for (const st of localStars()){
+    if (st.kind==="idea") IDEAS.push({ text:st.text, more:"kept in this browser only", at:st.at, seed:IDEAS.length*1.7+.3 });
+    else { const ar = SYSTEMS.flatMap(x=>x.areas).find(x=>x.name===st.area); if (ar) ar.items.push({ kind:st.kind, text:st.text, more:"kept in this browser only", at:st.at, src:"this browser" }); }
+  }
   PROPOSALS = (sky.proposed||[]).map((p,i) => ({ ...p, seed:i*3.1+1 }));
   AGENTS = data.agents.map((g,i) => {
     const where = g.lastFile ? AREA_OF[g.lastFile] : null;
     const areas = {}; for (const t of g.touched||[]) { const w = AREA_OF[t.file]; if (w) areas[w.area] = (areas[w.area]||0)+1; }
-    return { ...g, where, areas, seed:i*2.3+.7 };
+    return { ...g, where, areas, seed:i*2.3+.7, call: callsign(g.id) };
   });
   for (const s of SYSTEMS) for (const a of s.areas) a.agents = AGENTS.filter(g => g.state==="active" && g.where && g.where.sys===s.name && g.where.area===a.name);
   // the difference from last time is news: it rides across the sky on a meteor
@@ -131,8 +142,8 @@ function load(data){
       if (was!==undefined && now>was) news.push({ text:`${an} · ${RINGS[now]}`, sys:sn, area:an, kind: now===4?"live":"lit" });
       if (prevSnap.done[k]!==undefined && snap.done[k]>prevSnap.done[k]) news.push({ text:`${an} · something landed`, sys:sn, area:an, kind:"landed" }); }
     for (const id in snap.agent){ const w=prevSnap.agent[id], n=snap.agent[id]; if (!w) continue;
-      if (w.where!==n.where && n.where) news.push({ text:`${id.slice(0,8)} → ${n.where}`, sys:null, area:n.where, kind:"agent" });
-      if (w.state!=="idle" && n.state==="idle") news.push({ text:`${id.slice(0,8)} came home`, kind:"agent" }); }
+      if (w.where!==n.where && n.where) news.push({ text:`${callsign(id)} → ${n.where}`, sys:null, area:n.where, kind:"agent" });
+      if (w.state!=="idle" && n.state==="idle") news.push({ text:`${callsign(id)} came home`, kind:"agent" }); }
     if (snap.proposals > prevSnap.proposals) news.push({ text:`${snap.proposals-prevSnap.proposals} proposed`, kind:"proposal" });
   }
   if (prevSnap && news.length){ const c = {}; for (const n of news) c[n.kind]=(c[n.kind]||0)+1;
@@ -173,16 +184,16 @@ const KEYS = {
   all: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#fff"/></svg>a star system — an architecture department. click to open</span>
         <span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="2.2" fill="#fff"/></svg>a feature, held on a thread</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2" fill="rgba(226,234,244,.5)"/></svg>a loose idea, attached to nothing yet</span>
-        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#ff6b3b"/></svg>the orchestrator — its glow is how much waits on you. click to open the desk</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#ff6b3b"/></svg>the sun at the top is hq — its glow is how much waits on you. click it, from anywhere</span>
         <span><svg viewBox="0 0 24 12"><path d="M20 6L6 11L9 6L6 1Z" fill="none" stroke="#ff6b3b" stroke-width="1"/></svg>an agent. idle ones orbit home; working ones are out at an area</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-dasharray="1.6 1.6"/></svg>double-click empty space to pin an idea where you clicked</span>`,
   system: `<span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="3" fill="#fff"/></svg>a feature — click to open its constellation</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.4" fill="none" stroke="#48525f" stroke-dasharray="1.5 1.5"/></svg>planned, not started</span>
         <span>rings · planned → started → built → tested → live · closer in is more done</span>`,
-  desk: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-width="1.3"/></svg>a proposal — accept or veto</span>
+  hq: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-width="1.3"/></svg>a proposal — accept or veto</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>a question only you can answer</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tested, not yet live — light it</span>
-        <span>click anything to answer it, right there · click beyond the rays to go back</span>`,
+        <span>click anything to answer it, right there · esc or the galaxy line to leave</span>`,
   area: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>done</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.6" fill="none" stroke="rgba(226,234,244,.55)" stroke-dasharray="1.5 1.5"/></svg>to do</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.8" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>open question</span>
@@ -231,7 +242,7 @@ function drawDust(time){
   if (!REDUCED && Math.random() < .003 && meteors.length < 3) meteors.push({ x:Math.random()*W, y:Math.random()*H*.5, vx:6+Math.random()*5, vy:3+Math.random()*3, life:1, decay:.022 });
   if (!REDUCED && news.length && time-lastNews > 1800 && meteors.filter(m=>m.text).length < 2){ const n = news.shift(); meteor(n.text, n.kind); lastNews = time; burstAt(n); }
   if (!REDUCED && !news.length && time-lastAmbient > 14000){ lastAmbient = time;   // feet in the water: what is happening right now
-    const g = AGENTS.find(a => a.state==="active" && a.lastFile); if (g) meteor(`${g.short} · ${(g.lastTool||"").replace(/^mcp__\w+__/,"").toLowerCase()} · ${g.lastFile.split("/").pop()}`, "activity"); }
+    const g = AGENTS.find(a => a.state==="active" && a.lastFile); if (g) meteor(`${g.call} · ${(g.lastTool||"").replace(/^mcp__\w+__/,"").toLowerCase()} · ${g.lastFile.split("/").pop()}`, "activity"); }
   for (const m of meteors){ m.x+=m.vx; m.y+=m.vy; m.life-=m.decay;
     const L = m.text ? 22 : 10, warm = m.kind==="live"||m.kind==="landed";
     const rgb = warm ? "255,150,90" : m.kind==="agent"||m.kind==="activity" ? "255,107,59" : "255,255,255";
@@ -246,7 +257,7 @@ function whereIs(n){
   if (!n.area) return null;
   if (level.kind==="all"){ const i = SYSTEMS.findIndex(s => s.name===n.sys || s.areas.some(a=>a.name===n.area)); const c = placed.centers[i]; return c ? [c.x,c.y] : null; }
   if (level.kind==="system"){ const a = level.sys.areas.find(a=>a.name===n.area); if (!a) return null;
-    const R=Math.min((W-120)/2,(H-64)/2/TILT)-80; const [x,y]=proj(W/2,H/2+30,R*RR[a.ring],a.ang,motion); return [x,y]; }
+    const R=Math.min((W-120)/2,(H-110)/2/TILT)-70; const [x,y]=proj(W/2,H/2+34,R*RR[a.ring],a.ang,motion); return [x,y]; }
   if (level.kind==="area" && level.area.name===n.area) return [constellation(level.area).cx, constellation(level.area).cy];
   return null;
 }
@@ -331,43 +342,40 @@ function drawSystem(s, cx, cy, R, detailed, time, alpha, clickable){
   if (!detailed && clickable && alpha>.5) nodes.push({ x:cx, y:cy, r:R*1.05, sys:s, ell:true });
 }
 
-/* ============================================================ ORCHESTRATOR
-   The orange star the agents come home to. Idle ships orbit it; a working
-   ship is out at its area. Click a ship for its character. */
-function drawOrchestrator(time, alpha, big){
-  const R = 58, cx = W/2, cy = 64 + (H-64)/2;
+/* ============================================================ HQ, the sun
+   The orchestrator sits at the very top of every screen, half over the
+   horizon. Its glow is how much is waiting on you. Click it and HQ opens:
+   what waits fans out beneath it, aligned to the margins. */
+function sunPos(){ const R = level.kind==="hq" ? 150 : 96; return { cx: W/2, cy: -R*.42, R }; }
+function drawSun(time, alpha){
+  const { cx, cy, R } = sunPos(), q = queue().length, pulse = REDUCED ? 1 : .96+.04*Math.sin(time*.0011);
   ctx.globalAlpha = alpha;
-  ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.strokeStyle="rgba(255,107,59,.14)"; ctx.setLineDash([2,7]); ctx.stroke(); ctx.setLineDash([]);
-  const pulse=REDUCED?1:.94+.06*Math.sin(time*.0013);
-  const qn = queue().length;
-  bloom(cx,cy,(big?40:32)*pulse*(1+qn*.22),"255,107,59",Math.min(.9,.5+qn*.12)); flare(cx,cy,R*.6*(1+qn*.1),"255,150,110",.35); core(cx,cy,2.6,"#ff6b3b");
-  const idle = AGENTS.filter(g => g.state==="idle" || (g.state==="active" && !g.where));
-  const q = queue().length;
-  ctx.textAlign="center"; ctx.font=font(9.5, q?500:400); ctx.fillStyle=q?"rgba(255,140,90,.95)":"rgba(255,107,59,.5)"; ctx.fillText(q ? `${q} waiting on you` : "nothing waiting", cx, cy+R*TILT+16);
-  if (lastTurn){ ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText(("last turn · "+lastTurn).toUpperCase(), cx, cy+R*TILT+30); }
-  if (alpha>.5) nodes.push({ x:cx, y:cy, r:R*.6, orch:true, ell:true });
-  idle.forEach((g,i) => {
-    const ang = (i/idle.length)*TAU + time*.00012 + g.seed, [x,y,d,a] = proj(cx,cy,R*(.75+.15*((i*.618)%1)),ang,0);
-    const heading = Math.atan2(Math.cos(a)*TILT, -Math.sin(a));
-    ship(x,y,heading,big?6:5,"#ff6b3b",.35+.45*d);
-    if (alpha>.5) nodes.push({ x,y,r:14, agent:g });
-  });
+  bloom(cx, cy, R*(1.4+q*.06)*pulse, "255,107,59", Math.min(.85,.35+q*.06));
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = "#ff6b3b"; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); const g = ctx.createRadialGradient(cx,cy,R*.5,cx,cy,R); g.addColorStop(0,"rgba(255,140,90,0)"); g.addColorStop(1,"rgba(120,40,20,.55)"); ctx.fillStyle=g; ctx.fill();
+  const idle = AGENTS.filter(g => g.state!=="active" || !g.where);
+  idle.forEach((g,i) => { const a = Math.PI*.15 + (Math.PI*.7)*((i+.5)/idle.length) + (REDUCED?0:Math.sin(time*.0004+g.seed)*.08);
+    const x = cx+Math.cos(a)*R*1.22, y = cy+Math.sin(a)*R*1.22; if (y < 8) return;
+    ship(x,y,a+Math.PI/2,5,"#ff6b3b",.55); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
+  if (level.kind !== "hq"){
+    ctx.textAlign="center"; ctx.font=font(9.5, q?500:400); ctx.fillStyle = q ? "rgba(255,150,100,.95)" : "rgba(255,107,59,.55)";
+    ctx.fillText(q ? `${q} waiting on you` : "nothing waiting", cx, cy+R+18);
+    if (lastTurn){ ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText(("last turn · "+lastTurn).toUpperCase(), cx, cy+R+32); }
+    if (alpha>.5) nodes.push({ x:cx, y:Math.max(cy, 10), r:R*.9, orch:true });
+  }
   ctx.globalAlpha = 1;
 }
 
 /* ============================================================ SKY ======== */
-const ARR = [ [[.24,.70],[.5,.26],[.76,.70]], [[.24,.30],[.5,.74],[.76,.30]], [[.18,.5],[.5,.22],[.82,.5]], [[.18,.5],[.5,.78],[.82,.5]], [[1/6,.5],[.5,.5],[5/6,.5]] ];
+const ARR = [ [[.24,.34],[.5,.72],[.76,.34]], [[.24,.66],[.5,.30],[.76,.66]], [[.22,.28],[.5,.5],[.78,.72]], [[.78,.28],[.5,.5],[.22,.72]], [[1/6,.5],[.5,.5],[5/6,.5]] ];
 let placed = { R:0, centers:[] };
 function layoutSky(){
-  const n = Math.max(1, SYSTEMS.length||3), top=64, pad=40, head=44, w=W, h=H-top; let best=null;
+  const n = Math.max(1, SYSTEMS.length||3), top=96, pad=40, head=64, w=W, h=H-top; let best=null;
   const arrs = n===3 ? ARR : [Array.from({length:n},(_,i)=>[(i+.5)/n,.5])];
   for (const arr of arrs){
     const c = arr.map(([x,y]) => ({ x:x*w, y:top+y*h })); let R = Infinity;
     for (const k of c) R = Math.min(R, k.x, w-k.x, (k.y-top)/TILT, (top+h-k.y-head)/TILT);
     for (let i=0;i<c.length;i++) for (let j=i+1;j<c.length;j++) R = Math.min(R, Math.hypot(c[i].x-c[j].x, (c[i].y-c[j].y)/TILT)/2.05);
-    // room in the middle for the orchestrator
-    const mx = w/2, my = top + h/2;
-    for (const k of c) R = Math.min(R, Math.hypot(k.x-mx, (k.y-my)/TILT) - 96);
     R -= pad; if (!best || R > best.R) best = { R, centers:c };
   }
   placed = best;
@@ -383,41 +391,38 @@ function drawAll(time, alpha){
     if (alpha>.5) nodes.push({ x,y,r:14, idea:id });
   });
   ctx.globalAlpha=1;
-  drawOrchestrator(time, alpha, true);
 }
-function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2+30, Math.min((W-120)/2,(H-64)/2/TILT)-80, true, time, alpha, false); ctx.globalAlpha=1; }
+function drawOne(s, time, alpha){ ctx.globalAlpha=alpha; drawSystem(s, W/2, H/2+34, Math.min((W-120)/2,(H-110)/2/TILT)-70, true, time, alpha, false); ctx.globalAlpha=1; }
 
-/* ============================================================ DESK ======
-   The orchestrator, opened. What waits on you fans out from it on rays, each
-   with its answer beside it. The crew sits below. Nothing else is here. */
+/* ============================================================ HQ =========
+   The sun, opened. What waits on you in two columns, aligned to the left and
+   right margins, each on a ray from the sun. The crew along the bottom. */
 function drawDesk(time, alpha){
   ctx.globalAlpha = alpha;
-  const cx = W/2, cy = H/2 + 8, Rq = Math.min(W*.36, H*.33), items = queue();
-  const pulse = REDUCED ? 1 : .94+.06*Math.sin(time*.0013);
-  bloom(cx,cy,70*pulse,"255,107,59",.55); flare(cx,cy,140,"255,150,110",.4); core(cx,cy,3.6,"#ff6b3b");
-  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,140,90,.9)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, cy+30);
-  const n = items.length, a0 = -Math.PI*.92, a1 = -Math.PI*.08;
+  const { cx, cy, R } = sunPos(), items = queue(), L = Math.max(60, W*.1), Rm = W - L, y0 = R*.62 + 70, gap = Math.min(52, (H-y0-150)/Math.max(1, Math.ceil(items.length/2)));
+  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.95)"; ctx.fillText(items.length ? `${items.length} WAITING ON YOU` : "NOTHING IS WAITING ON YOU", cx, R*.62+34);
   items.forEach((it,i) => {
-    const ang = n===1 ? -Math.PI/2 : a0 + (a1-a0)*(i/(n-1)), ring = (n>7 && i%2) ? .72 : 1, r = Rq*ring;
-    const x = cx+Math.cos(ang)*r, y = cy+Math.sin(ang)*r*.9;
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.strokeStyle="rgba(255,107,59,.28)"; ctx.setLineDash([2,5]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+    const left = i%2===0, row = Math.floor(i/2), x = left ? L : Rm, y = y0 + row*gap;
+    ctx.beginPath(); ctx.moveTo(cx, cy+R*.6); ctx.lineTo(x + (left?-14:14), y); ctx.strokeStyle="rgba(255,107,59,.16)"; ctx.setLineDash([2,6]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
     const col = it.kind==="question" ? "#8fb4ff" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="light" ? "255,255,255" : "255,107,59";
-    bloom(x,y,22,rgb,.35); if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
-    const left = Math.cos(ang) < -.25, centre = Math.abs(Math.cos(ang)) <= .25;
-    ctx.textAlign = centre ? "center" : left ? "right" : "left"; const tx = centre ? x : x+(left?-12:12), ty = centre ? y-14 : y;
-    ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.92)"; ctx.fillText(it.text.length>40?it.text.slice(0,38)+"…":it.text, tx, ty+(centre?-8:-4));
-    ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(it.action.toUpperCase(), tx, ty+(centre?6:10));
-    if (alpha>.5) nodes.push({ x,y,r:16, desk:it });
+    const sx = x + (left?-14:14); bloom(sx,y,18,rgb,.35);
+    if (it.kind==="light") core(sx,y,3,col); else { ctx.beginPath(); ctx.arc(sx,y,3,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
+    ctx.textAlign = left ? "left" : "right";
+    ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.92)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, x, y-4);
+    ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():""), x, y+10);
+    if (alpha>.5) nodes.push({ x:sx, y, r:16, desk:it, tx:x, left });
   });
-  // the crew, below
+  // the crew, along the bottom, by callsign
   const crewList = AGENTS.slice().sort((a,b)=>(a.state==="active"?0:1)-(b.state==="active"?0:1));
-  const cyy = cy + Rq*.62 + 30, gap = Math.min(90, (W*.6)/Math.max(1,crewList.length));
-  ctx.font=font(9); ctx.textAlign="center"; ctx.fillStyle="rgba(135,146,161,.6)"; ctx.fillText("THE CREW", cx, cyy-30);
-  crewList.forEach((g,i) => { const x = cx + (i-(crewList.length-1)/2)*gap, y = cyy + (REDUCED?0:Math.sin(time*.0012+i)*3);
+  const cyy = H - 96, gapc = Math.min(110, (W-2*L)/Math.max(1,crewList.length));
+  crewList.forEach((g,i) => { const x = cx + (i-(crewList.length-1)/2)*gapc, y = cyy + (REDUCED?0:Math.sin(time*.0012+i)*3);
     if (g.state==="active") bloom(x,y,20,"255,107,59",.45); ship(x,y,-Math.PI/2,7,"#ff6b3b",g.state==="active"?1:.4);
-    ctx.font=font(9); ctx.fillStyle=g.state==="active"?"rgba(255,140,90,.9)":"rgba(135,146,161,.6)"; ctx.fillText(g.short.toUpperCase()+(g.where?" · "+g.where.area.toUpperCase():""), x, y+22);
+    ctx.textAlign="center"; ctx.font=font(9); ctx.fillStyle=g.state==="active"?"rgba(255,140,90,.9)":"rgba(135,146,161,.6)"; ctx.fillText(g.call.toUpperCase()+(g.where?" · "+g.where.area.toUpperCase():" · home"), x, y+22);
     if (alpha>.5) nodes.push({ x,y,r:16, agent:g }); });
-  if (IDEAS.length >= 2){ const gx = cx, gy = cyy + 58; ctx.font=font(9); ctx.fillStyle="rgba(255,107,59,.7)"; ctx.fillText("GATHER THE LOOSE IDEAS", gx, gy); if (alpha>.5) nodes.push({ x:gx, y:gy-4, r:60, gather:true }); }
+  if (IDEAS.length >= 2){ const gx = Rm, gy = y0 + Math.ceil(items.length/2)*gap + 6;
+    ctx.textAlign="right"; ctx.font=font(10.5); ctx.fillStyle="rgba(226,234,244,.7)"; ctx.fillText(`${IDEAS.length} loose ideas`, gx, gy-4);
+    ctx.font=font(9); ctx.fillStyle="#ff6b3b"; ctx.fillText("ASK AN AGENT TO SORT THEM INTO FEATURES", gx, gy+10);
+    if (alpha>.5) nodes.push({ x:gx-60, y:gy, r:70, gather:true }); }
   ctx.globalAlpha = 1;
 }
 /* answering, right on the item */
@@ -429,7 +434,7 @@ function showDeskItem(it, x, y){
   if (it.kind==="light") html += `<p style="color:var(--dim)">${esc(it.area.about||"")}</p><p style="display:flex;gap:8px">${btn("light","light it",false)}</p>`;
   html += `<p id="decnote"></p>`;
   decideEl.innerHTML = html; decideEl.hidden = false; key.hidden = true;
-  decideEl.style.right = "auto"; decideEl.style.top = Math.min(H-220, Math.max(60, y-20)) + "px"; decideEl.style.left = Math.min(W-400, x+24) + "px";
+  decideEl.style.right = "auto"; decideEl.style.bottom = "auto"; decideEl.style.top = Math.min(H-260, Math.max(60, y-20)) + "px"; decideEl.style.left = (x < W/2 ? Math.min(W-400, x+40) : Math.max(22, x-420)) + "px";
   const post = async (url, body) => { if (SNAPSHOT){ document.getElementById("decnote").textContent = "a snapshot — nothing was written"; return; }
     const r = await fetch(url, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(body) });
     if (r.ok) decideEl.hidden = true; else document.getElementById("decnote").textContent = (await r.json().catch(()=>({}))).error || "could not do that"; };
@@ -449,7 +454,7 @@ function constellation(a){
   const items = a.items.map((it,i)=>({...it, i}));
   let seed = 1000 + a.name.length*97 + a.name.charCodeAt(0);
   const rnd = () => (seed=(seed*16807)%2147483647)/2147483647;
-  const cx=W/2, cy=H*.58, Rx=Math.min(W*.44,740), Ry=Math.min(H*.36,420);
+  const cx=W/2, cy=H*.56, Rx=Math.min(W*.44,740), Ry=Math.min(H*.34,400);
   const alpha = { kind:"alpha", text:a.name, x:cx, y:cy, i:-1, tw:0 };
   const pts = items.map((it,j) => {
     const g = j*2.39996 + rnd()*.6, rr = .45 + rnd()*.55;
@@ -506,8 +511,6 @@ function drawTracker(time, alpha){
   cloud(C.cx, C.cy, Math.max(C.Rx,C.Ry)*1.1, .06);
   for (const p of C.pts) if (p.kind==="done"||p.kind==="todo") cloud(p.x,p.y,110,.05);
   ctx.restore();
-  bloom(nx,ny,60,"255,255,255",.26); flare(nx,ny,120,"255,255,255",.2); core(nx,ny,2.8,"#fff");
-  ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,255,255,.85)"; ctx.fillText(a.sys.name.toUpperCase(), nx, ny+22);
   for (const [u,v] of C.edges){
     const [ux,uy]=wob(u), [vx,vy]=wob(v);
     const lit = (u.kind==="done"||u.kind==="alpha") && (v.kind==="done"||v.kind==="alpha"), open = u.kind==="open"||v.kind==="open";
@@ -545,8 +548,8 @@ function outside(x, y){
   // the edge sits well beyond the figure — at least a tenth of the screen on
   // every side — so there is always room to double-click a star into place
   const mx = Math.max(120, W*.1), my = Math.max(80, H*.1);
-  if (level.kind === "desk"){ return Math.hypot(x-W/2, y-(H/2+8)) > Math.min(W*.36,H*.33) + 120; }
-  if (level.kind === "system"){ const cx=W/2, cy=H/2+30, R=Math.min((W-120)/2,(H-64)/2/TILT)-80; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
+  if (level.kind === "hq") return false;
+  if (level.kind === "system"){ const cx=W/2, cy=H/2+34, R=Math.min((W-120)/2,(H-110)/2/TILT)-70; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
   if (level.kind === "area"){ const C=constellation(level.area); const xs=[C.cx,...C.pts.map(p=>p.x)], ys=[C.cy,...C.pts.map(p=>p.y)];
     const x0=Math.min(...xs)-mx, x1=Math.max(...xs)+200+mx, y0=Math.min(...ys)-my, y1=Math.max(...ys)+my; return x < x0 || x > x1 || y < y0 || y > y1; }
   return false;
@@ -556,7 +559,7 @@ function pick(x, y){
   for (const n of nodes){ const d = n.ell ? Math.hypot(n.x-x,(n.y-y)/TILT) : Math.hypot(n.x-x,n.y-y); if (d<n.r && d<bd){ bd=d; best=n; } }
   return best;
 }
-function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="desk") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; drawTracker(time, alpha); } }
+function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="hq") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; drawTracker(time, alpha); } }
 function draw(now){
   const time=now-t0; fade += (1-fade)*(REDUCED?1:.12);
   const frozen = !!hover && !hover.sys;          // reading a body, a star, a ship: hold still
@@ -564,9 +567,10 @@ function draw(now){
   ctx.clearRect(0,0,W,H); drawDawn(time); drawDust(time); nodes=[];
   if (prev && fade<.995) drawLevel(prev, motion, 1-fade);
   ctx.save(); const sc = .96+.04*fade; ctx.translate(W/2*(1-sc), H/2*(1-sc)); ctx.scale(sc,sc); drawLevel(level, motion, fade); ctx.restore();
+  drawSun(time, 1);
   hover = mouse ? pick(mouse.x, mouse.y) : null;
   // empty sky under the cursor: show the star that would land here, and what kind it would be
-  const isOut = mouse && !hover && level.kind!=="all" && outside(mouse.x, mouse.y);
+  const isOut = mouse && !hover && level.kind!=="all" && level.kind!=="hq" && outside(mouse.x, mouse.y);
   if (isOut && !planting){ ctx.font=font(9); ctx.textAlign="left"; ctx.fillStyle="rgba(226,234,244,.35)"; ctx.fillText(level.kind==="area" ? "CLICK · BACK TO THE STAR SYSTEM" : "CLICK · BACK TO THE GALAXY", mouse.x+12, mouse.y+3.5); }
   const would = (!planting && mouse && !hover && !isOut && mouse.y > 56 && fade > .9) ? wouldPlace(mouse.x, mouse.y) : null;
   if (would){ ctx.beginPath(); ctx.arc(mouse.x,mouse.y,3,0,TAU); ctx.strokeStyle="rgba(226,234,244,.35)"; ctx.lineWidth=1; ctx.setLineDash([1.6,1.6]); ctx.stroke(); ctx.setLineDash([]);
@@ -583,11 +587,11 @@ function draw(now){
     tip.innerHTML = hover.item ? `${esc(hover.item.text)}${hover.item.more?`<em>${esc(hover.item.more)}</em>`:""}<small>${KIND[hover.item.kind]}${hover.item.src?" · from "+esc(hover.item.src):""}</small>`
       : hover.polaris ? `<span style="color:#fff">${esc(NAME)}</span><em>${esc(GOAL||"no goal set — add goal: to sky.yaml")}</em><small>${SYSTEMS.length} systems · ${SYSTEMS.reduce((n,s)=>n+s.areas.length,0)} areas · ${SYSTEMS.reduce((n,s)=>n+s.areas.filter(a=>a.ring===4).length,0)} live · ${AGENTS.filter(g=>g.state==="active").length} agent${AGENTS.filter(g=>g.state==="active").length===1?"":"s"} working</small>`
       : hover.desk ? `<span style="color:#fff">${esc(hover.desk.text)}</span>${hover.desk.more?`<em>${esc(hover.desk.more)}</em>`:""}<small>${hover.desk.kind} · ${hover.desk.action}</small>`
-      : hover.gather ? `gather<em>an agent reads the loose ideas and proposes where they belong. you accept or veto.</em>`
+      : hover.gather ? `sort the loose ideas<em>an agent reads them and proposes features they could become, under a star system. you accept or veto each.</em>`
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.short}${g.subagent?" · subagent":""}</span><em>${esc(g.intent||"no stated intent")}</em>
+      : g ? `<span style="color:#ff6b3b">${g.call}${g.subagent?" · a tender":""}</span><em>${esc(g.intent||"no stated intent")}</em>
              <div class="ch"><b>state</b><span>${g.state}${g.where?" · at "+esc(g.where.area):" · home"}</span>
              <b>character</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
              <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
@@ -605,11 +609,11 @@ function draw(now){
 }
 function setChrome(){
   back.hidden = level.kind==="all";
-  key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="desk"?"the desk":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
-  where.innerHTML = level.kind==="all" ? "" : level.kind==="desk" ? `<b>the desk</b>` : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
+  key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="hq"?"hq":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
+  where.innerHTML = level.kind==="all" ? "" : level.kind==="hq" ? `<b>hq</b>` : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
 }
 function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; decideEl.hidden = true; setChrome(); }
-function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); else if (level.kind==="system" || level.kind==="desk") go({ kind:"all" }); }
+function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); else if (level.kind==="system" || level.kind==="hq") go({ kind:"all" }); }
 
 /* ---- placing a star: implicit. Where you click decides what it is. ---------
    On the sky, empty space takes a loose idea. In a constellation the regions
@@ -617,6 +621,7 @@ function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); el
    a star placed there is a to-do; left is where questions sit; right is where
    explorations drift; below is what is done. The kind is read off the place. */
 function wouldPlace(x, y){
+  if (level.kind === "hq") return null;
   if (level.kind === "all") return { kind:"idea", area:null, label:"pin an idea" };
   if (level.kind === "area"){
     const C = constellation(level.area);
@@ -630,7 +635,7 @@ function wouldPlace(x, y){
 function plantAt(x, y){
   const w = wouldPlace(x, y); if (!w) return;
   planting = { ...w, x, y };
-  plantText.value = ""; plantNote.textContent = SNAPSHOT ? "a snapshot — it will not be kept" : "";
+  plantText.value = ""; plantNote.textContent = SNAPSHOT ? "kept in this browser only" : "";
   plant.style.left = x + "px"; plant.style.top = y + "px";
   plant.hidden = false; plantText.focus();
 }
@@ -638,8 +643,8 @@ function unplant(){ planting = null; plant.hidden = true; }
 async function commitPlant(){
   if (!planting) return;
   const text = plantText.value.trim(); if (!text){ unplant(); return; }
-  if (SNAPSHOT){ plantNote.textContent = "this is a snapshot — nothing was written"; return; }
   const body = { kind: planting.kind, area: planting.area, text, at: [planting.x / W, planting.y / H] };
+  if (SNAPSHOT){ keepLocal(body); unplant(); load(window.__SKY__); return; }
   const r = await fetch("/api/place", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(body) });
   if (!r.ok){ const j = await r.json().catch(()=>({})); plantNote.textContent = j.error || "could not place it"; return; }
   unplant();
@@ -652,22 +657,9 @@ cv.addEventListener("mousemove",e=>{ const nx=e.clientX, ny=e.clientY;
 cv.addEventListener("mouseleave",()=>{ mouse=null; tip.classList.remove("on"); });
 async function runGather(){
   if (SNAPSHOT) return;
-  decideEl.innerHTML = `<h4>gathering</h4><p>an agent is reading the loose ideas…</p>`; decideEl.hidden = false; decideEl.style.right="22px"; decideEl.style.left="auto"; decideEl.style.top="52px";
+  decideEl.innerHTML = `<h4>sorting</h4><p>an agent is reading the loose ideas…</p>`; decideEl.hidden = false; decideEl.style.right="22px"; decideEl.style.left="auto"; decideEl.style.top="auto"; decideEl.style.bottom="56px";
   const r = await fetch("/api/gather", { method:"POST" }); const j = await r.json().catch(()=>({}));
-  decideEl.innerHTML = `<h4>gathered</h4><p>${r.ok ? `${j.proposals.length} proposal${j.proposals.length===1?"":"s"} — on the desk, waiting on you` : esc(j.error||"could not gather")}</p>`;
-}
-function showCrew(){
-  const ago = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
-  const list = AGENTS.slice().sort((a,b)=> (a.state==="active"?0:1)-(b.state==="active"?0:1) || b.lastAt-a.lastAt);
-  crew.innerHTML = `<h4>the crew · ${AGENTS.filter(g=>g.state==="active").length} working · ${AGENTS.filter(g=>g.state==="idle").length} idle</h4>` +
-    (list.length ? list.map(g => `<div class="a ${g.state}"><b>${g.state==="active"?"<i>●</i> ":""}${g.short}${g.subagent?" · subagent":""}${g.where?` · at ${esc(g.where.area)}`:" · home"}</b><em>${esc(g.intent||"no stated intent")}</em><small>${g.lastFile?esc(g.lastFile)+" · ":""}${ago(g.lastAt)}</small></div>`).join("") : `<em>nobody has touched this repo lately</em>`);
-  crew.innerHTML += `<p style="margin-top:12px"><button id="gatherbtn" class="warm" style="font:inherit;letter-spacing:.12em;text-transform:uppercase;color:#ff6b3b;background:transparent;border:1px solid rgba(255,107,59,.4);padding:6px 11px;cursor:pointer">${SNAPSHOT?"gather · needs the live sky":"gather the loose ideas"}</button> <span id="gathernote" style="margin-left:8px"></span></p>`;
-  crew.hidden = false; key.hidden = true;
-  document.getElementById("gatherbtn").addEventListener("click", async () => {
-    if (SNAPSHOT) return; const note = document.getElementById("gathernote"); note.textContent = "an agent is reading them…";
-    const r = await fetch("/api/gather", { method:"POST" }); const j = await r.json().catch(()=>({}));
-    note.textContent = r.ok ? `${j.proposals.length} proposal${j.proposals.length===1?"":"s"} — on the sky, dotted` : (j.error || "could not gather");
-  });
+  decideEl.innerHTML = `<h4>sorted</h4><p>${r.ok ? `${j.proposals.length} proposed feature${j.proposals.length===1?"":"s"} — here, waiting on you` : esc(j.error||"could not sort them")}</p>`;
 }
 function showDecide(p){
   decideEl.innerHTML = `<h4>proposed · ${esc(p.name)}</h4><p style="color:var(--dim)">${esc(p.about)}</p><p>${p.ideas.map(i=>"· "+esc(i)).join("<br>")}</p>
@@ -684,11 +676,12 @@ cv.addEventListener("click",(e)=>{
   hover = pick(e.clientX, e.clientY);
   if (planting){ unplant(); return; }
   if (!decideEl.hidden){ decideEl.hidden = true; if (!(hover && hover.desk)) return; }
-  if (hover && hover.orch){ go({ kind:"desk" }); return; }
+  if (hover && hover.orch){ if (level.kind!=="hq") go({ kind:"hq" }); return; }
   if (hover && hover.desk){ showDeskItem(hover.desk, hover.x, hover.y); return; }
   if (hover && hover.gather){ runGather(); return; }
   if (hover && hover.sys) go({ kind:"system", sys:hover.sys });
   else if (hover && hover.area && level.kind==="system") go({ kind:"area", sys:level.sys, area:hover.area });
+  else if (!hover && level.kind==="hq") up();
   else if (!hover && level.kind!=="all" && outside(e.clientX, e.clientY)) up();
   if(REDUCED) draw(performance.now());
 });
