@@ -15,8 +15,9 @@ export type Area = {
 };
 export type Star = { name: string; goal: string; areas: Area[] };
 export type Idea = { text: string; more: string; at?: [number, number] };
+export type Proposal = { name: string; star: string; about: string; ideas: string[] };
 export type Sky = {
-  name: string; goal: string; at: number; stars: Star[]; ideas: Idea[];
+  name: string; goal: string; at: number; stars: Star[]; ideas: Idea[]; proposed: Proposal[];
   branches: { name: string; areas: string[]; files: number }[];
   worktrees: { path: string; branch: string }[];
 };
@@ -115,7 +116,7 @@ export function readSky(root: string): Sky {
   }));
 
   return {
-    name: doc.name ?? relative(join(root, ".."), root), goal: doc.goal ?? "", at: Date.now(), stars, ideas: (doc.ideas ?? []).map(entry),
+    name: doc.name ?? relative(join(root, ".."), root), goal: doc.goal ?? "", at: Date.now(), stars, ideas: (doc.ideas ?? []).map(entry), proposed: doc.proposed ?? [],
     branches: branches.map((b) => ({
       name: b.name, files: b.files.length,
       areas: stars.flatMap((s) => s.areas).filter((a) => b.files.some((f) => a.paths.includes(f))).map((a) => a.name),
