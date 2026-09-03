@@ -408,9 +408,12 @@ function drawTracker(time, alpha){
 /* ============================================================ loop ======= */
 /* the edge of the world at this level: beyond it, a click goes back up */
 function outside(x, y){
-  if (level.kind === "system"){ const cx=W/2, cy=H/2+30, R=Math.min((W-120)/2,(H-64)/2/TILT)-80; return Math.hypot(x-cx,(y-cy)/TILT) > R*1.12; }
+  // the edge sits well beyond the figure — at least a tenth of the screen on
+  // every side — so there is always room to double-click a star into place
+  const mx = Math.max(120, W*.1), my = Math.max(80, H*.1);
+  if (level.kind === "system"){ const cx=W/2, cy=H/2+30, R=Math.min((W-120)/2,(H-64)/2/TILT)-80; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
   if (level.kind === "area"){ const C=constellation(level.area); const xs=[C.cx,...C.pts.map(p=>p.x)], ys=[C.cy,...C.pts.map(p=>p.y)];
-    const x0=Math.min(...xs)-70, x1=Math.max(...xs)+230, y0=Math.min(...ys)-70, y1=Math.max(...ys)+70; return x < x0 || x > x1 || y < y0 || y > y1; }
+    const x0=Math.min(...xs)-mx, x1=Math.max(...xs)+200+mx, y0=Math.min(...ys)-my, y1=Math.max(...ys)+my; return x < x0 || x > x1 || y < y0 || y > y1; }
   return false;
 }
 function pick(x, y){
