@@ -25,7 +25,7 @@
   .plant { position:fixed; z-index:9; display:flex; align-items:center; gap:10px; transform:translate(16px,-50%); }
   .plant[hidden] { display:none; }
   .plant .kind { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
-  .plant input { font:inherit; font-size:12.5px; color:var(--ink); background:rgba(5,7,11,.85); border:0; border-bottom:1px solid rgba(226,234,244,.5); padding:5px 2px; width:280px; outline:none; }
+  .plant input { font:inherit; font-size:12.5px; color:var(--ink); background:transparent; border:0; padding:4px 2px; width:260px; outline:none; caret-color:#fff; }
   .plant input::placeholder { color:var(--faint); }
   .plant .note { font-size:10px; color:var(--faint); letter-spacing:.04em; white-space:nowrap; }
   .bar #keybtn { width:28px; height:28px; padding:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; letter-spacing:0; }
@@ -72,7 +72,7 @@
 <div class="bar">
   <span class="mark" id="mark" title=""><svg viewBox="0 0 20 20"><path d="M10 1.5 L11.9 8.1 L18.5 10 L11.9 11.9 L10 18.5 L8.1 11.9 L1.5 10 L8.1 8.1 Z"/></svg></span>
   <span class="live off" id="livedot"><i></i><span id="livetext">snapshot</span></span>
-  <button id="back" hidden>sky</button>
+  <button id="back" hidden>galaxy</button>
   <span id="where"></span>
   <span class="sp"></span>
   <button id="keybtn" title="key · k">?</button>
@@ -82,18 +82,17 @@
 <div class="panel" id="decide" hidden></div>
 <!-- the star you are about to place: an input that sits where you clicked -->
 <div class="plant" id="plant" hidden>
-  <span class="kind" id="plantKind"></span>
-  <input id="plantText" placeholder="what is it?" autocomplete="off" spellcheck="false">
+  <input id="plantText" placeholder="" autocomplete="off" spellcheck="false" title="enter to place · esc to let it go">
   <span class="note" id="plantNote"></span>
 </div>
 <div class="tip" id="tip"></div>
 
 <script>
 /* ============================================================ language ===
-   sky           everything
-   system        one north star and the areas held around it   (FRONTEND…)
-   constellation one area, opened — its stars are its work
-   orchestrator  the orange star the agents come home to
+   galaxy        the full view — everything
+   star system   an architecture department: a north star and its features
+   constellation one feature, opened — its stars are its work
+   orchestrator  the orange star in the middle, where agents come home
    place a star  add a line to sky.yaml from here
    pin an idea   a loose star, attached to nothing yet
    ======================================================================== */
@@ -134,7 +133,7 @@ function load(data){
 const cv = document.getElementById("c"), ctx = cv.getContext("2d");
 const tip = document.getElementById("tip"), back = document.getElementById("back"), where = document.getElementById("where");
 const crew = document.getElementById("crew"), decideEl = document.getElementById("decide");
-const key = document.getElementById("key"), plant = document.getElementById("plant"), plantKind = document.getElementById("plantKind"), plantText = document.getElementById("plantText"), plantNote = document.getElementById("plantNote"), mark = document.getElementById("mark");
+const key = document.getElementById("key"), plant = document.getElementById("plant"), plantText = document.getElementById("plantText"), plantNote = document.getElementById("plantNote"), mark = document.getElementById("mark");
 let planting = null;   // { kind, area, x, y } while an input sits on the sky
 let W=0,H=0,DPR=1, nodes=[], hover=null, mouse=null, t0=performance.now(), dust=[], meteors=[];
 let level = { kind:"all", sys:null, area:null }, prev = null, fade = 1, opened = null;
@@ -144,13 +143,13 @@ const TAU = Math.PI*2, RR = [1,.82,.64,.46,.28], TILT = .6;
 const font = (px,w=400) => `${w} ${px}px "IBM Plex Mono", ui-monospace, monospace`;
 const esc = (s) => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const KEYS = {
-  all: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#fff"/></svg>a system — a north star and its areas. click to open</span>
-        <span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="2.2" fill="#fff"/></svg>an area, held on a thread</span>
+  all: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#fff"/></svg>a star system — an architecture department. click to open</span>
+        <span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="2.2" fill="#fff"/></svg>a feature, held on a thread</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2" fill="rgba(226,234,244,.5)"/></svg>a loose idea, attached to nothing yet</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3.4" fill="#ff6b3b"/></svg>the orchestrator — where agents come home</span>
         <span><svg viewBox="0 0 24 12"><path d="M20 6L6 11L9 6L6 1Z" fill="none" stroke="#ff6b3b" stroke-width="1"/></svg>an agent. idle ones orbit home; working ones are out at an area</span>
-        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-dasharray="1.6 1.6"/></svg>double-click empty sky to pin an idea where you clicked</span>`,
-  system: `<span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="3" fill="#fff"/></svg>an area — click to open its constellation</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-dasharray="1.6 1.6"/></svg>double-click empty space to pin an idea where you clicked</span>`,
+  system: `<span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="3" fill="#fff"/></svg>a feature — click to open its constellation</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.4" fill="none" stroke="#48525f" stroke-dasharray="1.5 1.5"/></svg>planned, not started</span>
         <span>rings · planned → started → built → tested → live · closer in is more done</span>`,
   area: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>done</span>
@@ -336,7 +335,9 @@ function constellation(a){
     for (const p of pts){ if (p.fixed) continue; const d=Math.hypot(p.x-cx,p.y-cy); if (d<MIN){ const k=(MIN-d)/d; p.x+=(p.x-cx)*k; p.y+=(p.y-cy)*k; } }
   }
   if (pts.length){
-    const L=150, Rm=300, T=150, B=70;
+    const lw = (p) => p.text.length*6.6+14;
+    const leftW = Math.max(0, ...pts.filter(p => p.x < cx-40).map(lw)), rightW = Math.max(0, ...pts.filter(p => p.x >= cx-40).map(lw));
+    const L = 40 + leftW, Rm = 60 + rightW, T=150, B=70;
     let x0=Math.min(cx,...pts.map(p=>p.x)), x1=Math.max(cx,...pts.map(p=>p.x)), y0=Math.min(cy,...pts.map(p=>p.y)), y1=Math.max(cy,...pts.map(p=>p.y));
     const sc=Math.min(1,(W-L-Rm)/Math.max(1,x1-x0),(H-T-B)/Math.max(1,y1-y0));
     for (const p of pts){ if (p.fixed) continue; p.x = cx + (p.x-cx)*sc; p.y = cy + (p.y-cy)*sc; }
@@ -428,7 +429,7 @@ function draw(now){
   hover = mouse ? pick(mouse.x, mouse.y) : null;
   // empty sky under the cursor: show the star that would land here, and what kind it would be
   const isOut = mouse && !hover && level.kind!=="all" && outside(mouse.x, mouse.y);
-  if (isOut && !planting){ ctx.font=font(9); ctx.textAlign="left"; ctx.fillStyle="rgba(226,234,244,.35)"; ctx.fillText(level.kind==="area" ? "CLICK · BACK TO THE SYSTEM" : "CLICK · BACK TO THE SKY", mouse.x+12, mouse.y+3.5); }
+  if (isOut && !planting){ ctx.font=font(9); ctx.textAlign="left"; ctx.fillStyle="rgba(226,234,244,.35)"; ctx.fillText(level.kind==="area" ? "CLICK · BACK TO THE STAR SYSTEM" : "CLICK · BACK TO THE GALAXY", mouse.x+12, mouse.y+3.5); }
   const would = (!planting && mouse && !hover && !isOut && mouse.y > 56 && fade > .9) ? wouldPlace(mouse.x, mouse.y) : null;
   if (would){ ctx.beginPath(); ctx.arc(mouse.x,mouse.y,3,0,TAU); ctx.strokeStyle="rgba(226,234,244,.35)"; ctx.lineWidth=1; ctx.setLineDash([1.6,1.6]); ctx.stroke(); ctx.setLineDash([]);
     ctx.font=font(9); ctx.textAlign="left"; ctx.fillStyle="rgba(226,234,244,.35)"; ctx.fillText(("double-click · "+would.label).toUpperCase(), mouse.x+12, mouse.y+3.5); }
@@ -463,7 +464,7 @@ function draw(now){
 }
 function setChrome(){
   back.hidden = level.kind==="all";
-  key.innerHTML = `<h4>key · ${level.kind==="all"?"the sky":level.kind==="system"?"a system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
+  key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
   where.innerHTML = level.kind==="all" ? "" : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
 }
 function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; decideEl.hidden = true; setChrome(); }
@@ -488,8 +489,7 @@ function wouldPlace(x, y){
 function plantAt(x, y){
   const w = wouldPlace(x, y); if (!w) return;
   planting = { ...w, x, y };
-  plantKind.textContent = w.label; plantText.value = "";
-  plantNote.textContent = SNAPSHOT ? "snapshot — run npm run sky to keep it" : "enter to place · esc to let it go";
+  plantText.value = ""; plantNote.textContent = SNAPSHOT ? "a snapshot — it will not be kept" : "";
   plant.style.left = x + "px"; plant.style.top = y + "px";
   plant.hidden = false; plantText.focus();
 }
