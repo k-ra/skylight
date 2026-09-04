@@ -16,7 +16,8 @@
     "read": "tsx src/read.ts",
     "agents": "tsx src/tail.ts",
     "typecheck": "tsc --noEmit",
-    "share": "tsx src/share.ts"
+    "share": "tsx src/share.ts",
+    "test": "node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
     "yaml": "^2.8.0"

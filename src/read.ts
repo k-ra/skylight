@@ -22,7 +22,7 @@ export type Sky = {
   worktrees: { path: string; branch: string }[];
 };
 
-const RING = ["planned", "started", "built", "tested", "live"];
+const RING = ["planned", "started", "built", "tests mapped", "live"];
 export const ringName = (r: number) => RING[r];
 
 const git = (root: string, args: string[]): string => {
@@ -63,7 +63,7 @@ function countLines(root: string, files: string[]): number {
   return n;
 }
 
-/** Tests that hold: `test(` calls in the mapped test files, only if the last run passed. */
+/** Test declarations in mapped files. This does not run tests or assert that they pass. */
 function countTests(root: string, files: string[]): number {
   let n = 0;
   for (const f of files) n += (readFileSync(join(root, f), "utf8").match(/^\s*test\(/gm) ?? []).length;
@@ -106,6 +106,7 @@ export function readSky(root: string): Sky {
     name: s.name, goal: s.goal ?? "",
     areas: (s.areas ?? []).map((a: any): Area => {
       const paths = glob(root, a.files), tests = glob(root, a.tests);
+      const activityPaths = glob(root, a.activity);
       const lines = countLines(root, paths), ticks = countTests(root, tests);
       const ring = live.has(a.name) ? 4 : ticks > 0 ? 3 : paths.length ? (lines < 80 ? 1 : 2) : 0;
       const items: Item[] = [];
@@ -121,7 +122,7 @@ export function readSky(root: string): Sky {
         const hit = b.files.filter((f) => paths.includes(f));
         if (hit.length) items.push({ kind: "explore", text: `branch · ${b.name}`, more: `${hit.length} file${hit.length === 1 ? "" : "s"} in this area`, src: "git" });
       }
-      return { name: a.name, about: a.about ?? "", ring, ticks, files: paths.length, lines, paths, items, lastTouched: lastTouched(root, paths) };
+      return { name: a.name, about: a.about ?? "", ring, ticks, files: paths.length, lines, paths: [...new Set([...paths, ...activityPaths])], items, lastTouched: lastTouched(root, paths) };
     }),
   }));
 

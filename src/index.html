@@ -9,6 +9,9 @@
   html,body { height:100%; }
   body { margin:0; background:var(--void); color:var(--ink); overflow:hidden; font-family:"IBM Plex Mono",ui-monospace,monospace; }
   canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; cursor:none; }
+  .project-label { position:fixed; top:20px; left:24px; z-index:7; pointer-events:none; }
+  .project-label h1 { margin:0; font:500 12px "IBM Plex Mono",monospace; letter-spacing:.15em; text-transform:uppercase; }
+  .project-label p { margin:7px 0 0; max-width:calc(100vw - 48px); color:var(--dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bar { position:fixed; bottom:0; left:0; right:0; z-index:8; display:flex; align-items:center; gap:14px; padding:15px 22px;
          font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); pointer-events:none; }
   .bar b { color:var(--ink); font-weight:500; }
@@ -78,6 +81,7 @@
 </style>
 
 <canvas id="c"></canvas>
+<header class="project-label"><h1 id="projectName">Skylight</h1><p id="projectGoal"></p></header>
 <div class="bar">
   <span class="mark" id="mark" title=""><svg viewBox="0 0 20 20"><path d="M10 1.5 L11.9 8.1 L18.5 10 L11.9 11.9 L10 18.5 L8.1 11.9 L1.5 10 L8.1 8.1 Z"/></svg></span>
   <span class="live off" id="livedot"><i></i><span id="livetext">snapshot</span></span>
@@ -100,13 +104,13 @@
 <script>
 /* ============================================================ language ===
    galaxy        the full view — everything
-   star system   an architecture department: a north star and its features
+   star system   a major product capability: a north star and its features
    constellation one feature, opened — its stars are its work
    orchestrator  the orange star in the middle, where agents come home
    place a star  add a line to sky.yaml from here
    pin an idea   a loose star, attached to nothing yet
    ======================================================================== */
-const RINGS = ["planned","started","built","tested","live"];
+const RINGS = ["planned","started","built","tests mapped","live"];
 const KIND = { done:"done", todo:"to do", open:"open question", explore:"exploration" };
 let PROPOSALS = [];
 /* a snapshot has no server to write to, so what you place is kept in this
@@ -121,13 +125,17 @@ const callsign = (id) => { let h = 0; for (const c of id) h = (h*31 + c.charCode
 
 function load(data){
   const sky = data.sky; ROOT = data.root || ""; FILE = data.file || "sky.yaml"; GOAL = sky.goal || ""; NAME = sky.name || "sky";
+  document.title = `${NAME} · Skylight`;
+  document.getElementById("projectName").textContent = NAME;
+  document.getElementById("projectGoal").textContent = GOAL;
   mark.title = `${sky.name} · ${sky.goal||""}`;
+  AREA_OF = {};
   SYSTEMS = sky.stars.map((s,i) => ({
     name:s.name, goal:s.goal,
     areas:s.areas.map((a,j) => {
       const k = s.name+"/"+a.name;
       if (!angles.has(k)) angles.set(k, (j/s.areas.length)*TAU - Math.PI/2 + i*.6);
-      for (const p of a.paths) AREA_OF[p] = { sys:s.name, area:a.name };
+      for (const p of a.paths) if (!AREA_OF[p]) AREA_OF[p] = { sys:s.name, area:a.name };
       return { name:a.name, about:a.about, ring:a.ring, ticks:a.ticks, files:a.files, lines:a.lines, items:a.items.slice(), sys:null, ang:angles.get(k), agents:[] };
     }),
   }));
@@ -183,7 +191,7 @@ function queue(){
   for (const p of PROPOSALS) q.push({ kind:"proposal", text:p.name, more:p.about, p, action:"accept · veto" });
   for (const s of SYSTEMS) for (const a of s.areas){
     for (const it of a.items) if (it.kind==="open") q.push({ kind:"question", text:it.text, more:it.more, area:a, action:"answer" });
-    if (a.ring===3) q.push({ kind:"light", text:a.name, more:"tested — is it live?", area:a, action:"light it" });
+    if (a.ring===3) q.push({ kind:"light", text:a.name, more:"tests mapped — verified and live?", area:a, action:"light it" });
   }
   return q;
 }
@@ -200,10 +208,10 @@ const KEYS = {
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-dasharray="1.6 1.6"/></svg>double-click empty space to pin an idea where you clicked</span>`,
   system: `<span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="3" fill="#fff"/></svg>a feature — click to open its constellation</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.4" fill="none" stroke="#48525f" stroke-dasharray="1.5 1.5"/></svg>planned, not started</span>
-        <span>rings · planned → started → built → tested → live · closer in is more done</span>`,
+        <span>rings · planned → started → built → tests mapped → live · closer in is more done</span>`,
   hq: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-width="1.3"/></svg>a proposal — accept or veto</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>a question only you can answer</span>
-        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tested, not yet live — light it</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tests mapped, not verified — review before marking live</span>
         <span>click anything to answer it, right there · esc or the galaxy line to leave</span>`,
   area: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>done</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.6" fill="none" stroke="rgba(226,234,244,.55)" stroke-dasharray="1.5 1.5"/></svg>to do</span>
@@ -456,7 +464,7 @@ function drawDesk(time, alpha){
 function showDeskItem(it, x, y){
   const b = (id, label, warm) => `<button id="${id}"${warm?' class="warm"':''}>${label}</button>`;
   const acts = it.kind==="proposal" ? b("acc","accept") + b("veto","veto",true) : it.kind==="question" ? b("answer","answer") : b("light","light it");
-  const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}` : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tested · ${esc(it.area.about||"")}`;
+  const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}` : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tests mapped · ${esc(it.area.about||"")}`;
   decideEl.className = "panel answer";
   decideEl.innerHTML = `<div class="row"><b title="${esc(it.text)}">${esc(it.text)}</b><span class="acts">${acts}</span></div><p class="ctx">${ctx1}</p>` +
     (it.kind==="question" ? `<input id="ans" placeholder="the answer" autocomplete="off" spellcheck="false">` : "") + `<p class="note" id="decnote"></p>`;
@@ -637,7 +645,7 @@ function draw(now){
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.call}${g.subagent?" · a tender":""}</span><em>${esc(g.intent||"no stated intent")}</em>
+      : g ? `<span style="color:#ff6b3b">${g.call} · ${esc(g.provider || "agent")}${g.subagent?" · a tender":""}</span><em>${esc(g.intent||"no stated intent")}</em>
              <div class="ch"><b>state</b><span>${g.state}${g.where?" · at "+esc(g.where.area):" · home"}</span>
              <b>character</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
              <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
