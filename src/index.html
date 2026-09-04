@@ -428,10 +428,11 @@ function drawDesk(time, alpha){
     const hot = hover && hover.desk===it;
     bloom(x,y,hot?28:18,rgb,hot?.6:.35);
     if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
-    const top = Math.abs(nx) < .12, left = nx < 0;
-    // outer ring: words outside the console. inner ring: words inside, toward the star
+    const top = Math.abs(nx) < .3, left = nx < 0;
+    // outer ring: words outside the console, and above it near the top. inner
+    // ring: words inside, toward the star, and below it near the top
     ctx.textAlign = top ? "center" : (left !== inner) ? "right" : "left";
-    const tx = top ? x : x + (inner ? -nx : nx)*16, ty = top ? (inner ? y+22 : y-14) : y + (inner ? -ny : ny)*8;
+    const tx = top ? x : x + (inner ? -nx : nx)*16, ty = top ? (inner ? y+24 : y-16) : y + (inner ? -ny : ny)*8;
     const sub = it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
     ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, tx, ty-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
