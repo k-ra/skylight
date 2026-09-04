@@ -11,6 +11,7 @@ import { parseDocument, YAMLSeq } from "yaml";
 import { readSky, type Sky } from "./read.ts";
 import { gather, decide } from "./gather.ts";
 import { orchestrate } from "./orchestrate.ts";
+import { gate, shareToken } from "./access.ts";
 import { Tailer, type Agent } from "./tail.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -101,6 +102,7 @@ function answer(area: string, question: string, text: string): string | null {
 }
 
 const server = createServer((req, res) => {
+  if (gate(req, res)) return;          // loopback is open; anywhere else needs the share key
   const url = req.url ?? "/";
   if (url === "/api/place" && req.method === "POST") {
     let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
@@ -167,5 +169,5 @@ server.listen(PORT, "127.0.0.1", () => {
       finally { busy = false; }
     }, 6000);
   }
-  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  orchestrator  ${process.env.SKY_NO_ORCHESTRATOR ? "off" : "watching sky.yaml"}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
+  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  access  ${shareToken() ? "shared — a key is required from anywhere but this machine" : "this machine only"}\n  orchestrator  ${process.env.SKY_NO_ORCHESTRATOR ? "off" : "watching sky.yaml"}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
 });

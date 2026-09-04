@@ -4,15 +4,26 @@
   "private": true,
   "type": "module",
   "description": "A project drawn as a sky. Areas orbit their north star at how done they are; agents are ships; ideas are loose stars.",
-  "bin": { "skylight": "./bin/skylight.js" },
-  "engines": { "node": ">=22" },
+  "bin": {
+    "skylight": "./bin/skylight.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "tsx src/serve.ts",
     "export": "tsx src/serve.ts --export snapshot.html",
     "read": "tsx src/read.ts",
     "agents": "tsx src/tail.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "share": "tsx src/share.ts"
   },
-  "dependencies": { "yaml": "^2.8.0" },
-  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.19.0", "typescript": "^5.6.0" }
+  "dependencies": {
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
 }
