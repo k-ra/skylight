@@ -29,11 +29,35 @@ const clients = new Set<import("node:http").ServerResponse>();
 const payload = () => JSON.stringify({ sky, agents, at: Date.now(), root: ROOT, file: join(ROOT, "sky.yaml") });
 const push = () => { const data = `event: sky\ndata: ${payload()}\n\n`; for (const c of clients) c.write(data); };
 
-const tailer = new Tailer(ROOT, () => { agents = tailer.list(); push(); });
+/**
+ * Presence, reported. The tailer finds Claude Code sessions on its own; any
+ * other orchestrator can put its agents on the sky by posting here:
+ *   POST /api/presence  { id, intent?, file?, state?: "active"|"idle"|"gone" }
+ * A report is good for ten minutes, then the ship goes idle; a day, then gone.
+ */
+const reported = new Map<string, Agent>();
+function presence(b: any): string | null {
+  const id = String(b?.id ?? "").trim(); if (!id) return "an agent needs an id";
+  if (b.state === "gone") { reported.delete(id); return null; }
+  const prev = reported.get(id);
+  const file = typeof b.file === "string" ? b.file.replace(/^\/+/, "") : prev?.lastFile ?? null;
+  const a: Agent = { id, short: id.slice(0, 8), cwd: ROOT, subagent: !!b.subagent, intent: typeof b.intent === "string" ? b.intent.slice(0, 160) : prev?.intent ?? null,
+    lastAt: Date.now(), lastFile: file, lastTool: typeof b.tool === "string" ? b.tool : "reported", touched: [...(prev?.touched ?? []), ...(file ? [{ file, at: Date.now(), tool: "reported" }] : [])].slice(-400),
+    tools: prev?.tools ?? {}, state: b.state === "idle" ? "idle" : "active" };
+  reported.set(id, a); return null;
+}
+const allAgents = (): Agent[] => {
+  const now = Date.now();
+  for (const a of reported.values()) a.state = now - a.lastAt < 10 * 60_000 ? (a.state === "idle" ? "idle" : "active") : now - a.lastAt < 24 * 3600_000 ? "idle" : "gone";
+  for (const [id, a] of reported) if (a.state === "gone") reported.delete(id);
+  const seen = new Set(reported.keys());
+  return [...reported.values(), ...tailer.list().filter((a) => !seen.has(a.id))].sort((x, y) => y.lastAt - x.lastAt);
+};
+const tailer = new Tailer(ROOT, () => { agents = allAgents(); push(); });
 
 const exportAt = process.argv.indexOf("--export");
 if (exportAt > 0) {
-  tailer.poll(); agents = tailer.list();
+  tailer.poll(); agents = allAgents();
   const html = readFileSync(join(HERE, "index.html"), "utf8")
     .replace("<script>", `<script>window.__SKY__=${payload()};</script>\n<script>`);
   writeFileSync(process.argv[exportAt + 1], html);
@@ -121,6 +145,13 @@ const server = createServer((req, res) => {
     const r = gather(ROOT); sky = readSky(ROOT); push();
     res.writeHead(r.error ? 400 : 200, { "content-type": "application/json" }); return res.end(JSON.stringify(r));
   }
+  if (url === "/api/presence" && req.method === "POST") {
+    let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+      try { const err = presence(JSON.parse(body)); if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
+        agents = allAgents(); push(); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true, agents: agents.length })); }
+      catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
+    }); return;
+  }
   if ((url === "/api/light" || url === "/api/answer") && req.method === "POST") {
     let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
       try {
@@ -157,8 +188,8 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  tailer.poll(); agents = tailer.list();
-  setInterval(() => tailer.poll(), 1500);
+  tailer.poll(); agents = allAgents();
+  setInterval(() => { tailer.poll(); agents = allAgents(); }, 1500);
   // the orchestrator: reaches for stars a person placed. SKY_NO_ORCHESTRATOR=1 to run without it.
   if (!process.env.SKY_NO_ORCHESTRATOR) {
     let busy = false;

@@ -72,6 +72,33 @@ shows on hover.
 | done · to do · open · exploration | `sky.yaml`, plus `TODO` markers in code, plus unmerged branches |
 | agents, and where they are | `~/.claude/projects/**/*.jsonl` — every Claude Code session that touched the repo |
 
+## Plugging in your own orchestrator
+
+The seam is the file. Skylight watches `sky.yaml` and redraws; anything that
+reads and writes it is an orchestrator. The one shipped here
+(`src/orchestrate.ts`) is the smallest true version — turn it off with
+`SKY_NO_ORCHESTRATOR=1` and let yours take over. The contract:
+
+| who | writes |
+|---|---|
+| a person, through the page | a star: `text`, `when`, `by: person`, `at` |
+| the orchestrator | on that star: `seen`, `context`, `near` · new to-dos with `by: orchestrator`, `from` · questions, as `open` entries |
+| skylight | nothing into the file — rings come from files and tests |
+| nobody but a person | `live` |
+
+Agents: Skylight finds Claude Code sessions by reading their transcripts. Any
+other orchestrator can put its ships on the sky by reporting presence:
+
+```bash
+curl -X POST http://127.0.0.1:4340/api/presence \
+  -H 'content-type: application/json' \
+  -d '{"id":"worker-3","intent":"migrate the billing tables","file":"src/billing/schema.ts"}'
+```
+
+A report is good for ten minutes, then the ship goes idle; post `state: "gone"`
+to take it off. The model calls in `gather.ts` and `orchestrate.ts` go
+through the `claude` binary; swap them for whatever you use.
+
 ## The gesture
 
 Click a system to open it. Click an area for its constellation. Double-click
