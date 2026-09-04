@@ -8,7 +8,7 @@ import { existsSync, globSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse } from "yaml";
 
-export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string };
+export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string };
 export type Area = {
   name: string; about: string; ring: number; ticks: number; files: number; lines: number;
   paths: string[]; items: Item[]; lastTouched: number | null;
@@ -43,6 +43,7 @@ function entry(e: any): { text: string; more: string; at?: [number, number]; whe
   if (e?.when) base.when = String(e.when);
   if (e?.by) base.by = String(e.by);
   if (e?.answer) base.answer = String(e.answer);
+  for (const k of ["seen", "context", "near", "from"]) if (e?.[k]) base[k] = String(e[k]);
   return base;
 }
 
