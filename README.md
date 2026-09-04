@@ -20,6 +20,22 @@ npm start -- /path/to/your/repo      # the repo must hold a sky.yaml
 
 Open http://127.0.0.1:4340. `npm run export` writes a standalone `snapshot.html`.
 
+## Reach it from anywhere
+
+By default Skylight answers only this machine. To open it deliberately, for
+as long as one command runs:
+
+```bash
+brew install cloudflared     # once (winget install Cloudflare.cloudflared on Windows)
+npm run share -- /path/to/your/repo
+```
+
+That prints an `https://…trycloudflare.com/?k=…` link. The key rides in the
+address once, then moves into a cookie. Every star you place through that link
+lands in `sky.yaml` on the machine running it, and the orchestrator reaches for
+it. Anyone holding the link can do the same — treat it as a password. The
+address dies when you stop.
+
 ## sky.yaml
 
 ```yaml
