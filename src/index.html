@@ -44,6 +44,16 @@
   .panel { position:fixed; right:22px; bottom:56px; z-index:8; font-size:10.5px; letter-spacing:.06em; color:var(--faint);
            background:rgba(5,7,11,.95); border:1px solid rgba(226,234,244,.12); padding:12px 14px; width:min(380px, calc(100vw - 44px)); }
   .panel[hidden] { display:none; }
+  .panel.answer { width:auto; max-width:340px; padding:9px 11px 10px; }
+  .panel.answer .row { display:flex; gap:12px; align-items:center; justify-content:space-between; }
+  .panel.answer .row b { color:var(--ink); font-weight:500; letter-spacing:0; font-size:12px; text-transform:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .panel.answer .acts { display:flex; gap:6px; flex:none; }
+  .panel.answer .acts button { font:inherit; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); background:transparent; border:1px solid rgba(226,234,244,.28); padding:4px 8px; cursor:pointer; }
+  .panel.answer .acts button.warm { color:var(--agent); border-color:rgba(255,107,59,.4); }
+  .panel.answer .acts button:hover { border-color:rgba(226,234,244,.6); }
+  .panel.answer .ctx { margin:5px 0 0; color:var(--faint); letter-spacing:0; font-size:11px; line-height:1.45; }
+  .panel.answer input { font:inherit; font-size:12px; color:var(--ink); background:transparent; border:0; border-bottom:1px solid rgba(226,234,244,.35); padding:5px 0; width:100%; outline:none; margin-top:6px; caret-color:#fff; }
+  .panel.answer .note { margin:4px 0 0; color:var(--agent); font-size:10px; letter-spacing:0; }
   .panel h4 { margin:0 0 10px; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:400; }
   .panel p { margin:8px 0 0; color:var(--faint); letter-spacing:0; font-size:11px; line-height:1.5; }
   .panel code { color:var(--dim); }
@@ -443,23 +453,33 @@ function drawDesk(time, alpha){
 }
 /* answering, right on the item */
 function showDeskItem(it, x, y){
-  const btn = (id, label, warm) => `<button id="${id}" style="font:inherit;letter-spacing:.12em;text-transform:uppercase;color:${warm?"#ff6b3b":"#fff"};background:transparent;border:1px solid ${warm?"rgba(255,107,59,.4)":"rgba(226,234,244,.4)"};padding:6px 11px;cursor:pointer">${label}</button>`;
-  let html = `<h4>${it.kind==="proposal"?"proposed":it.kind==="question"?"a question":"tested, not yet live"} · ${esc(it.text)}</h4>`;
-  if (it.kind==="proposal") html += `<p style="color:var(--dim)">${esc(it.more)}</p><p>${it.p.ideas.map(i=>"· "+esc(i)).join("<br>")}</p><p style="margin-top:12px;display:flex;gap:8px">${btn("acc","accept · under "+esc(it.p.star),false)}${btn("veto","veto",true)}</p>`;
-  if (it.kind==="question") html += `<p style="color:var(--dim)">${esc(it.more||"")}</p><p><input id="ans" placeholder="the answer" style="font:inherit;color:var(--ink);background:transparent;border:0;border-bottom:1px solid rgba(226,234,244,.4);padding:6px 2px;width:100%;outline:none"></p><p style="display:flex;gap:8px">${btn("answer","answer",false)}</p>`;
-  if (it.kind==="light") html += `<p style="color:var(--dim)">${esc(it.area.about||"")}</p><p style="display:flex;gap:8px">${btn("light","light it",false)}</p>`;
-  html += `<p id="decnote"></p>`;
-  decideEl.innerHTML = html; decideEl.hidden = false; key.hidden = true;
-  decideEl.style.right = "auto"; decideEl.style.bottom = "auto"; decideEl.style.top = Math.min(H-260, Math.max(60, y-20)) + "px"; decideEl.style.left = (x < W/2 ? Math.min(W-400, x+40) : Math.max(22, x-420)) + "px";
+  const b = (id, label, warm) => `<button id="${id}"${warm?' class="warm"':''}>${label}</button>`;
+  const acts = it.kind==="proposal" ? b("acc","accept") + b("veto","veto",true) : it.kind==="question" ? b("answer","answer") : b("light","light it");
+  const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}` : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tested · ${esc(it.area.about||"")}`;
+  decideEl.className = "panel answer";
+  decideEl.innerHTML = `<div class="row"><b title="${esc(it.text)}">${esc(it.text)}</b><span class="acts">${acts}</span></div><p class="ctx">${ctx1}</p>` +
+    (it.kind==="question" ? `<input id="ans" placeholder="the answer" autocomplete="off" spellcheck="false">` : "") + `<p class="note" id="decnote"></p>`;
+  decideEl.hidden = false; key.hidden = true;
+  // beside the item, on its side; the leader is drawn from the dot to the card
+  const left = x < W/2;
+  decideEl.style.right = "auto"; decideEl.style.bottom = "auto"; decideEl.style.top = Math.min(H-140, Math.max(60, y-22)) + "px";
+  decideEl.style.left = (left ? Math.min(W-360, x+36) : Math.max(22, x-36-Math.min(340, W-44))) + "px";
+  leader = { x, y };
   const post = async (url, body) => { if (SNAPSHOT){ document.getElementById("decnote").textContent = "a snapshot — nothing was written"; return; }
     const r = await fetch(url, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(body) });
-    if (r.ok) decideEl.hidden = true; else document.getElementById("decnote").textContent = (await r.json().catch(()=>({}))).error || "could not do that"; };
+    if (r.ok){ decideEl.hidden = true; leader = null; } else document.getElementById("decnote").textContent = (await r.json().catch(()=>({}))).error || "could not do that"; };
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
   on("acc", () => post("/api/proposal", { name: it.p.name, action:"accept" }));
   on("veto", () => post("/api/proposal", { name: it.p.name, action:"veto" }));
   on("light", () => post("/api/light", { area: it.area.name }));
   on("answer", () => post("/api/answer", { area: it.area.name, question: it.text, text: document.getElementById("ans").value.trim() }));
   const ans = document.getElementById("ans"); if (ans){ ans.focus(); ans.addEventListener("keydown", e => { e.stopPropagation(); if (e.key==="Enter") document.getElementById("answer").click(); }); }
+}
+let leader = null;
+function drawLeader(){
+  if (decideEl.hidden || !leader) return;
+  const r = decideEl.getBoundingClientRect(); const ex = leader.x < r.left ? r.left : r.right, ey = Math.min(Math.max(leader.y, r.top+10), r.bottom-10);
+  ctx.beginPath(); ctx.moveTo(leader.x, leader.y); ctx.lineTo(ex, ey); ctx.strokeStyle="rgba(226,234,244,.35)"; ctx.lineWidth=1; ctx.stroke();
 }
 
 /* ============================================================ AREA ====== */
@@ -622,7 +642,7 @@ function draw(now){
     const top = Math.min(Math.max(mouse.y, th/2 + 60), H - th/2 - 12);
     tip.style.transform = "translate(0,-50%)"; tip.style.left = left + "px"; tip.style.top = top + "px";
   } else tip.classList.remove("on");
-  drawSparks(); if (!REDUCED) drawCursor(time);
+  drawLeader(); drawSparks(); if (!REDUCED) drawCursor(time);
   if (!REDUCED) requestAnimationFrame(draw);
 }
 function setChrome(){
@@ -630,7 +650,7 @@ function setChrome(){
   key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="hq"?"hq":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
   where.innerHTML = level.kind==="all" ? "" : level.kind==="hq" ? `<b>hq</b>` : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
 }
-function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; decideEl.hidden = true; setChrome(); }
+function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; decideEl.hidden = true; leader = null; setChrome(); }
 function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); else if (level.kind==="system" || level.kind==="hq") go({ kind:"all" }); }
 
 /* ---- placing a star: implicit. Where you click decides what it is. ---------
@@ -675,7 +695,7 @@ cv.addEventListener("mousemove",e=>{ const nx=e.clientX, ny=e.clientY;
 cv.addEventListener("mouseleave",()=>{ mouse=null; tip.classList.remove("on"); });
 async function runGather(){
   if (SNAPSHOT) return;
-  decideEl.innerHTML = `<h4>sorting</h4><p>an agent is reading the loose ideas…</p>`; decideEl.hidden = false; decideEl.style.right="22px"; decideEl.style.left="auto"; decideEl.style.top="auto"; decideEl.style.bottom="56px";
+  decideEl.className = "panel"; leader = null; decideEl.innerHTML = `<h4>sorting</h4><p>an agent is reading the loose ideas…</p>`; decideEl.hidden = false; decideEl.style.right="22px"; decideEl.style.left="auto"; decideEl.style.top="auto"; decideEl.style.bottom="56px";
   const r = await fetch("/api/gather", { method:"POST" }); const j = await r.json().catch(()=>({}));
   decideEl.innerHTML = `<h4>sorted</h4><p>${r.ok ? `${j.proposals.length} proposed feature${j.proposals.length===1?"":"s"} — here, waiting on you` : esc(j.error||"could not sort them")}</p>`;
 }
