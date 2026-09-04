@@ -413,13 +413,14 @@ function drawDesk(time, alpha){
   ctx.globalAlpha = alpha;
   const { cx, cy, R } = sunPos(), items = queue();
   if (IDEAS.length >= 2) items.push({ kind:"sort", text:`${IDEAS.length} loose ideas`, more:"an agent reads them and proposes features", action:"ask an agent to sort them" });
-  const rx = Math.min(W*.40, 560), ry = Math.min(cy-140, H*.58), n = items.length;
+  // two rings on the console, items alternating between them, so neighbours never share a row of text
+  const rx = Math.max(180, Math.min(W*.5-240, 560)), ry = Math.min(cy-150, H*.58), n = items.length;
   ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,Math.PI*1.02,Math.PI*1.98); ctx.strokeStyle="rgba(255,107,59,.14)"; ctx.setLineDash([1.5,9]); ctx.lineDashOffset=-time*.006; ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
   ctx.beginPath(); ctx.ellipse(cx,cy,rx*.86,ry*.86,0,Math.PI*1.04,Math.PI*1.96); ctx.strokeStyle="rgba(255,107,59,.07)"; ctx.setLineDash([1.5,9]); ctx.stroke(); ctx.setLineDash([]);
   if (!n){ ctx.textAlign="center"; ctx.font=font(10.5,500); ctx.fillStyle="rgba(255,150,100,.8)"; ctx.fillText("NOTHING IS WAITING ON YOU", cx, cy-ry*.5); }
   items.forEach((it,i) => {
     const a0 = Math.PI*1.06, a1 = Math.PI*1.94, ang = n===1 ? Math.PI*1.5 : a0 + (a1-a0)*(i/(n-1));
-    const x = cx+Math.cos(ang)*rx, y = cy+Math.sin(ang)*ry, nx = Math.cos(ang), ny = Math.sin(ang);
+    const inner = i%2===1, rr = inner ? .76 : 1, nx = Math.cos(ang), ny = Math.sin(ang), x = cx+nx*rx*rr, y = cy+ny*ry*rr;
     const mx = (cx+x)/2 + nx*40, my = (cy+y)/2 + 30;
     ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,107,59,.08)"; ctx.lineWidth=4; ctx.stroke(); ctx.restore();
     ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,150,100,.45)"; ctx.setLineDash([2,7]); ctx.lineDashOffset=time*.02; ctx.lineWidth=1.1; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
@@ -427,13 +428,14 @@ function drawDesk(time, alpha){
     const hot = hover && hover.desk===it;
     bloom(x,y,hot?28:18,rgb,hot?.6:.35);
     if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
-    const top = Math.abs(nx) < .22, left = nx < 0;
-    ctx.textAlign = top ? "center" : left ? "right" : "left";
-    const tx = top ? x : x + nx*16, ty = top ? y-14 : y + ny*8;
+    const top = Math.abs(nx) < .12, left = nx < 0;
+    // outer ring: words outside the console. inner ring: words inside, toward the star
+    ctx.textAlign = top ? "center" : (left !== inner) ? "right" : "left";
+    const tx = top ? x : x + (inner ? -nx : nx)*16, ty = top ? (inner ? y+22 : y-14) : y + (inner ? -ny : ny)*8;
     const sub = it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
     ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>44?it.text.slice(0,42)+"…":it.text, tx, ty-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
-    const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = top ? tx-w/2 : left ? tx-w : tx;
+    const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = top ? tx-w/2 : ctx.textAlign==="right" ? tx-w : tx;
     if (alpha>.5) nodes.push({ x, y, rect:[Math.min(bx,x-10), Math.min(ty-18,y-10), Math.max(bx+w,x+10)-Math.min(bx,x-10), Math.max(ty+16,y+10)-Math.min(ty-18,y-10)], desk:it });
   });
   ctx.globalAlpha = 1;
