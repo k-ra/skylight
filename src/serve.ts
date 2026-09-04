@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { parseDocument, YAMLSeq } from "yaml";
 import { readSky, type Sky } from "./read.ts";
 import { gather, decide } from "./gather.ts";
+import { orchestrate } from "./orchestrate.ts";
 import { Tailer, type Agent } from "./tail.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -156,5 +157,15 @@ const server = createServer((req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   tailer.poll(); agents = tailer.list();
   setInterval(() => tailer.poll(), 1500);
-  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
+  // the orchestrator: reaches for stars a person placed. SKY_NO_ORCHESTRATOR=1 to run without it.
+  if (!process.env.SKY_NO_ORCHESTRATOR) {
+    let busy = false;
+    setInterval(() => {
+      if (busy) return; busy = true;
+      try { const r = orchestrate(ROOT, 2); if (r.error) process.stderr.write(`orchestrator: ${r.error}\n`);
+        if (r.reached.length) { for (const x of r.reached) process.stdout.write(`reached · ${x}\n`); sky = readSky(ROOT); push(); } }
+      finally { busy = false; }
+    }, 6000);
+  }
+  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  orchestrator  ${process.env.SKY_NO_ORCHESTRATOR ? "off" : "watching sky.yaml"}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
 });
