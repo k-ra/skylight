@@ -27,7 +27,7 @@ export type Agent = {
   /** which tools it reaches for — its character, roughly */
   tools: Record<string, number>;
   /** active: touched something in the last 10 minutes */
-  state: "active" | "idle" | "gone";
+  state: "active" | "idle" | "unknown" | "gone";
 };
 
 const ACTIVE_MS = 10 * 60_000, GONE_MS = 24 * 3600_000;

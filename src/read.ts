@@ -8,7 +8,8 @@ import { existsSync, globSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse } from "yaml";
 
-export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string };
+export type Proposal2 = { kind: string; text: string; by?: string; when?: string };
+export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[] };
 export type Area = {
   name: string; about: string; ring: number; ticks: number; files: number; lines: number;
   paths: string[]; items: Item[]; lastTouched: number | null;
@@ -17,6 +18,7 @@ export type Star = { name: string; goal: string; areas: Area[] };
 export type Idea = { text: string; more: string; at?: [number, number] };
 export type Proposal = { name: string; star: string; about: string; ideas: string[] };
 export type Sky = {
+  activity?: { excludePaths: string[]; labels: Record<string, string> };
   name: string; goal: string; at: number; stars: Star[]; ideas: Idea[]; proposed: Proposal[];
   branches: { name: string; areas: string[]; files: number }[];
   worktrees: { path: string; branch: string }[];
@@ -35,7 +37,7 @@ function split(s: string): { text: string; more: string } {
   const i = s.indexOf(" | ");
   return i < 0 ? { text: s.trim(), more: "" } : { text: s.slice(0, i).trim(), more: s.slice(i + 3).trim() };
 }
-function entry(e: any): { text: string; more: string; at?: [number, number]; when?: string; by?: string; answer?: string } {
+function entry(e: any): { text: string; more: string; at?: [number, number]; when?: string; by?: string; answer?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[] } {
   if (typeof e === "string") return split(e);
   const base: any = split(String(e?.text ?? ""));
   const at = Array.isArray(e?.at) && e.at.length === 2 ? [Number(e.at[0]), Number(e.at[1])] as [number, number] : undefined;
@@ -43,7 +45,16 @@ function entry(e: any): { text: string; more: string; at?: [number, number]; whe
   if (e?.when) base.when = String(e.when);
   if (e?.by) base.by = String(e.by);
   if (e?.answer) base.answer = String(e.answer);
-  for (const k of ["seen", "context", "near", "from"]) if (e?.[k]) base[k] = String(e[k]);
+  for (const k of ["seen", "context", "near", "from", "reconciled", "restates"]) if (e?.[k]) base[k] = String(e[k]);
+  // The orchestrator's proposed consequences travel to the page so a person can
+  // accept or reject them there. Structured, not stringified.
+  if (typeof e?.addresses_question === "boolean") base.addresses_question = e.addresses_question;
+  if (Array.isArray(e?.proposes)) {
+    const ps = e.proposes
+      .map((p: any) => ({ kind: String(p?.kind ?? "acceptance"), text: String(p?.text ?? "").trim(), by: String(p?.by ?? ""), when: String(p?.when ?? "") }))
+      .filter((p: Proposal2) => p.text);
+    if (ps.length) base.proposes = ps;
+  }
   return base;
 }
 
@@ -113,8 +124,24 @@ export function readSky(root: string): Sky {
       for (const k of ["done", "todo", "open", "explore"] as const)
         for (const s of a[k] ?? []) {
           const e = entry(s);
-          // a question with an answer is a done star; the answer is what it says on hover
-          if (k === "open" && e.answer) { items.push({ kind: "done", text: e.text, more: e.answer, at: e.at, when: e.when, by: e.by, src: "answered" }); continue; }
+          // An answer is not a completion. A question stays OPEN until someone
+          // explicitly reconciles it (`reconciled:` set on the entry). The answer
+          // rides along as hover text so it stays visible without being treated
+          // as settled — otherwise answering a question makes it disappear.
+          if (k === "open" && e.answer) {
+            const settled = Boolean(e.reconciled);
+            // Spread the rest so the orchestrator's own annotations (seen, context,
+            // near, restates) survive onto an answered question instead of being
+            // dropped — otherwise its reading is written to the file and never shown.
+            const { answer, ...rest } = e;
+            items.push({
+              ...rest,
+              kind: settled ? "done" : "open",
+              more: answer,
+              src: settled ? "reconciled" : "answered · not yet reconciled",
+            });
+            continue;
+          }
           const { answer: _drop, ...rest } = e; items.push({ kind: k, ...rest, src: "sky.yaml" });
         }
       items.push(...todosIn(root, paths));
@@ -132,6 +159,7 @@ export function readSky(root: string): Sky {
       name: b.name, files: b.files.length,
       areas: stars.flatMap((s) => s.areas).filter((a) => b.files.some((f) => a.paths.includes(f))).map((a) => a.name),
     })),
+    activity: { labels: Object.fromEntries(Object.entries(doc.activity?.labels ?? {}).filter(([k,v]) => typeof v === "string").map(([k,v]) => [k, String(v)])), excludePaths: Array.isArray(doc.activity?.excludePaths) ? doc.activity.excludePaths.filter((p: unknown) => typeof p === "string") : [] },
     worktrees,
   };
 }
@@ -143,7 +171,9 @@ export function areaOf(sky: Sky, file: string): { star: string; area: string } |
 }
 
 if (process.argv[1]?.endsWith("read.ts")) {
-  const sky = readSky(process.cwd());
+  // Accept a repo path like orchestrate.ts does, so `tsx src/read.ts <repo>`
+  // reads the sky you asked for rather than silently reading the one you are in.
+  const sky = readSky(process.argv[2] ?? process.cwd());
   for (const s of sky.stars) {
     console.log(`\n${s.name.toUpperCase()}`);
     for (const a of s.areas)

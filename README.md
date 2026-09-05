@@ -83,9 +83,14 @@ reads and writes it is an orchestrator. The one shipped here
 | who | writes |
 |---|---|
 | a person, through the page | a star: `text`, `when`, `by: person`, `at` |
-| the orchestrator | on that star: `seen`, `context`, `near` · new to-dos with `by: orchestrator`, `from` · questions, as `open` entries |
+| the orchestrator | on that star: `seen`, `context`, `near` · new to-dos with `by: orchestrator`, `from` · questions, as `open` entries · on an **answered** question: `addresses_question`, `restates`, and `proposes[]` with `by: orchestrator` |
+| nobody but a person | `live`, and `reconciled` — answering a question does not close it |
 | skylight | nothing into the file — rings come from files and tests |
-| nobody but a person | `live` |
+
+Where an accepted line lands is yours to say: set `accept_into:` on an area or at the
+top of `sky.yaml` (Facet points it at `spec.acceptance`). With nothing configured, an
+area that already keeps a `spec` map gets `spec.acceptance` and everything else gets
+`accepted:` — no project schema required. The path is never taken from the model.
 
 Agents: Skylight finds Claude Code and Codex sessions locally. Any
 other orchestrator can put its ships on the sky by reporting presence:
