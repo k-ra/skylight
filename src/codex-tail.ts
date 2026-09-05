@@ -12,12 +12,13 @@ const canonical = (path: string): string => {
 };
 const inside = (root: string, path: string) => path === root || path.startsWith(root + sep);
 type Cursor = { offset: number; carry: string; decoder: StringDecoder; skipLine: boolean; id: string; cwd: string };
-type Options = { sessionsDir?: string; worktrees?: string[]; now?: () => number };
+type Options = { sessionsDir?: string; worktrees?: string[]; excludePaths?: string[]; now?: () => number };
 
 export class CodexTailer {
   private root: string;
   private roots: string[];
   private directory: string;
+  private excludedRoots: string[];
   private now: () => number;
   private excluded = new Set<string>();
   private cursors = new Map<string, Cursor>();
@@ -28,6 +29,7 @@ export class CodexTailer {
   constructor(root: string, private onChange: () => void, options: Options = {}) {
     this.root = canonical(root);
     this.roots = [this.root, ...(options.worktrees ?? []).map(canonical)];
+    this.excludedRoots = this.roots.flatMap(root => (options.excludePaths ?? []).map(p => canonical(resolve(root, p))));
     this.directory = options.sessionsDir ?? join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions");
     this.now = options.now ?? Date.now;
   }
@@ -51,6 +53,11 @@ export class CodexTailer {
         if (meta.type !== "session_meta" || typeof data?.id !== "string" || typeof data.cwd !== "string") continue;
         const cwd = canonical(data.cwd);
         if (!this.roots.some(root => inside(root, cwd))) { this.excluded.add(path); continue; }
+        // Product runs and internal review/helper sessions are not coding workers.
+        const subagent = typeof data.source === "object" ? data.source?.subagent : null;
+        if (this.excludedRoots.some(root => inside(root, cwd)) || (subagent && !subagent.thread_spawn)) {
+          this.excluded.add(path); continue;
+        }
         // Read at most the final 2 MiB initially; do not replay years of transcript history.
         const offset = Math.max(Buffer.byteLength(line) + 1, stats.size - 2 * 1024 * 1024);
         this.cursors.set(path, { offset, carry: "", decoder: new StringDecoder("utf8"), skipLine: offset > Buffer.byteLength(line) + 1, id: data.id, cwd });
@@ -161,7 +168,7 @@ export class CodexTailer {
     }
     for (const a of this.agents.values()) {
       const age = now - a.lastAt;
-      const state = age >= DAY ? "gone" : this.active.has(a.id) && age < 10 * 60_000 ? "active" : "idle";
+      const state = age >= DAY ? "gone" : this.active.has(a.id) ? (age < 10 * 60_000 ? "active" : "unknown") : "idle";
       if (state !== a.state) { a.state = state; changed = true; }
     }
     if (changed) this.onChange();

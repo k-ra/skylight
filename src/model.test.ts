@@ -83,6 +83,52 @@ test("orchestrator saves a limited batch and preserves concurrent human edits", 
   assert.equal(updated.stars[0].areas[0].todo.length, 2);
 });
 
+test("an answered question is read, not re-asked", async () => {
+  const root = fixture(), file = join(root, "sky.yaml");
+  const sky = {
+    name: "test",
+    stars: [{ name: "Agent", areas: [{
+      name: "graphics", about: "Charts and explanatory graphics",
+      spec: { acceptance: ["Unfamiliar forms introduce their visual vocabulary."] },
+      open: [{
+        text: "Spec decision | Does the milestone need a public link?",
+        answer: "it should open in another window in the form the user picked",
+        by: "person", when: "2026-09-04T21:17:35.054Z",
+      }],
+    }] }],
+  };
+  writeFileSync(file, stringify(sky));
+  process.env.SKY_TEST_OUTPUT = JSON.stringify({
+    context: "Redirects: the author specified delivery forms rather than hosting.",
+    addresses_question: false,
+    restates: "In which forms must a finished piece be openable?",
+    near: null,
+    proposes: { kind: "acceptance", text: "A finished piece opens in a separate window in the form the author selected." },
+    todo: "Wrong response | an answered question must not receive a to-do",
+  });
+
+  const result = await orchestrate(root, 1);
+  assert.equal(result.reached.length, 1);
+
+  // The author's answer, and the criteria it might change, must reach the model.
+  const { prompt } = JSON.parse(readFileSync(join(root, "invocation.json"), "utf8"));
+  assert.match(prompt, /it should open in another window/);
+  assert.match(prompt, /Unfamiliar forms introduce their visual vocabulary/);
+
+  const area = parse(readFileSync(file, "utf8")).stars[0].areas[0];
+  const item = area.open[0];
+  assert.equal(item.answer, "it should open in another window in the form the user picked", "the author's words are never rewritten");
+  assert.equal(item.addresses_question, false);
+  assert.equal(item.restates, "In which forms must a finished piece be openable?");
+  assert.equal(item.proposes.length, 1);
+  assert.equal(item.proposes[0].kind, "acceptance");
+  assert.equal(item.proposes[0].by, "orchestrator");
+
+  // Answering is not closing, and a to-do is the wrong response to an answer.
+  assert.equal(item.reconciled, undefined, "only a person closes a question");
+  assert.equal(area.todo, undefined, "no to-do proposing how to answer what is already answered");
+});
+
 test("model failures do not leak raw CLI output", async () => {
   const root = fixture(); writeFileSync(process.env.SKY_CODEX!, '#!/usr/bin/env node\nconsole.error("PRIVATE TOKEN");process.exit(1)');
   await assert.rejects(callModel(root, "prompt"), error => error instanceof Error && !error.message.includes("PRIVATE TOKEN") && error.message.includes("failed"));

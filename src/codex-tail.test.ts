@@ -42,7 +42,7 @@ test("filters unrelated projects, handles partial JSON lines, and removes stale 
   const line = f.event("event_msg", { type: "task_started" });
   appendFileSync(f.file, line.slice(0, -2)); f.tailer.poll(); assert.equal(f.tailer.list().length, 0);
   appendFileSync(f.file, line.slice(-2)); f.tailer.poll(); assert.equal(f.tailer.list().length, 1);
-  f.advance(11 * 60_000); f.tailer.poll(); assert.equal(f.tailer.list()[0].state, "idle");
+  f.advance(11 * 60_000); f.tailer.poll(); assert.equal(f.tailer.list()[0].state, "unknown");
   f.advance(86_400_000); f.tailer.poll(); assert.equal(f.tailer.list().length, 0);
 });
 
@@ -78,4 +78,21 @@ test("recent tools establish activity even when the turn-start record is outside
   appendFileSync(f.file, f.event("response_item", { type: "function_call", name: "read_file", arguments: JSON.stringify({ path: "src/main.ts" }) }));
   f.tailer.poll();
   assert.equal(f.tailer.list()[0].state, "active");
+});
+
+
+test("excludes product sessions and internal helpers but retains delegated coding", () => {
+  const f = fixture();
+  const product = join(f.root, "work/duck/essay"); mkdirSync(product, { recursive: true });
+  const started = f.event("event_msg", { type: "task_started" });
+  writeFileSync(join(f.sessionsDir, "product.jsonl"), f.event("session_meta", { id:"product", cwd:product, source:"vscode" }) + started);
+  writeFileSync(join(f.sessionsDir, "helper.jsonl"), f.event("session_meta", { id:"helper", cwd:f.root, source:{subagent:{other:"guardian"}} }) + started);
+  writeFileSync(join(f.sessionsDir, "worker.jsonl"), f.event("session_meta", { id:"worker", cwd:f.root, source:{subagent:{thread_spawn:{parent_thread_id:"thread-1"}}} }) + started);
+  // Similar prefixes are real code, not the excluded workspace.
+  const near = join(f.root,"work/duck-tools"); mkdirSync(near,{recursive:true});
+  writeFileSync(join(f.sessionsDir,"near.jsonl"), f.event("session_meta",{id:"near",cwd:near,source:"vscode"}) + started);
+  appendFileSync(f.file, started);
+  const tailer = new CodexTailer(f.root,()=>{}, {sessionsDir:f.sessionsDir,excludePaths:["work/duck"]});
+  tailer.poll();
+  assert.deepEqual(tailer.list().map(a=>a.id).sort(),["near","thread-1","worker"]);
 });

@@ -30,7 +30,7 @@ let modelBusy = false;
 let sky: Sky = readSky(ROOT);
 let agents: Agent[] = [];
 const clients = new Set<import("node:http").ServerResponse>();
-const payload = () => JSON.stringify({ sky, agents, at: Date.now(), root: ROOT, file: join(ROOT, "sky.yaml"), modelProvider: PROVIDER });
+const payload = () => JSON.stringify({ sky, agents: agents.map(a => ({...a, intent: sky.activity?.labels[a.id] ?? (a.provider === "reported" ? a.intent : null)})), at: Date.now(), root: ROOT, file: join(ROOT, "sky.yaml"), modelProvider: PROVIDER });
 const push = () => { const data = `event: sky\ndata: ${payload()}\n\n`; for (const c of clients) c.write(data); };
 
 /**
@@ -60,7 +60,7 @@ const allAgents = (): Agent[] => {
 const sources = (process.env.SKY_AGENT_SOURCES ?? "claude,codex").split(",").map(s => s.trim());
 const changed = () => { agents = allAgents(); push(); };
 const tailer = sources.includes("claude") ? new Tailer(ROOT, changed) : null;
-const codexTailer = sources.includes("codex") ? new CodexTailer(ROOT, changed, { worktrees: sky.worktrees.map(w => w.path) }) : null;
+const codexTailer = sources.includes("codex") ? new CodexTailer(ROOT, changed, { worktrees: sky.worktrees.map(w => w.path), excludePaths: sky.activity?.excludePaths }) : null;
 const pollAgents = () => { tailer?.poll(); codexTailer?.poll(); agents = allAgents(); };
 
 const exportAt = process.argv.indexOf("--export");
@@ -138,7 +138,77 @@ function answer(area: string, question: string, text: string): string | null {
       const idx = (open.items as any[]).findIndex((i) => { const v = i?.get ? i.get("text") : (i?.value ?? i); return String(v).split(" | ")[0].trim() === question; });
       if (idx < 0) return "no such question";
       const old = (open.items as any[])[idx]; const textOld = old?.get ? old.get("text") : (old?.value ?? old);
+      // Keep where the star was placed. Drop the orchestrator's reading of the PREVIOUS
+      // answer so it reconsiders this one — a stale proposal is worse than no proposal.
+      const at = old?.get ? old.get("at", true) : undefined;
       open.set(idx, { text: String(textOld), answer: text, when: new Date().toISOString(), by: "person" });
+      const fresh = (open.items as any[])[idx];
+      if (at !== undefined && at !== null && fresh?.set) fresh.set("at", at);
+      writeFileSync(file, doc.toString()); return null;
+    }
+  return `no area called ${area}`;
+}
+
+/** Append strings to a dotted path inside an area, creating maps and the list as needed. */
+function appendAt(area: any, path: string, values: string[]): void {
+  const keys = path.split(".").filter(Boolean);
+  const last = keys.pop(); if (!last) return;
+  let node = area;
+  for (const k of keys) {
+    let next = node.get(k, true);
+    if (!next?.set) { node.set(k, {}); next = node.get(k, true); }
+    node = next;
+  }
+  const list = node.get(last, true) as YAMLSeq | undefined;
+  if (!list?.add) node.set(last, values);
+  else for (const v of values) if (!(list.items as any[]).some((i) => String(i?.value ?? i) === v)) list.add(v);
+}
+
+/**
+ * Reconcile an answered question. Answering is not settling: the orchestrator reads
+ * the answer and proposes what it changes, and only a person accepts that. Accepting
+ * writes the proposed lines into the project's own vocabulary and stamps `reconciled`,
+ * which is what finally closes the question. Rejecting drops the proposals and leaves
+ * the question open, without inviting the orchestrator to propose the same thing again.
+ *
+ * WHERE an accepted line goes is the project's business, not Skylight's. A project
+ * says so with `accept_into:` on the area or at the top of sky.yaml — Facet points it
+ * at `spec.acceptance`; another project might not have a spec block at all. Absent
+ * configuration, an area that already keeps a `spec` map gets `spec.acceptance`, and
+ * anything else gets `accepted:`, which needs no project schema. The path is never
+ * taken from the model — an agent must not get to choose where it writes.
+ */
+function reconcile(area: string, question: string, action: "accept" | "reject"): string | null {
+  const file = join(ROOT, "sky.yaml");
+  const doc = parseDocument(readFileSync(file, "utf8"));
+  for (const star of (doc.get("stars", true) as YAMLSeq).items as any[])
+    for (const a of (star.get("areas", true) as YAMLSeq).items as any[]) {
+      if (a.get("name") !== area) continue;
+      const open = a.get("open", true) as YAMLSeq | undefined; if (!open) return "no questions here";
+      const item = (open.items as any[]).find((i) => { const v = i?.get ? i.get("text") : (i?.value ?? i); return String(v).split(" | ")[0].trim() === question; });
+      if (!item?.get) return "no such question";
+      if (!item.get("answer")) return "that question has no answer yet";
+      if (item.get("reconciled")) return "already reconciled";
+      const now = new Date().toISOString();
+      const proposes = item.get("proposes", true) as YAMLSeq | undefined;
+
+      if (action === "reject") {
+        if (!proposes) return "nothing proposed to reject";
+        item.delete("proposes");
+        item.set("proposes_rejected", now);
+        writeFileSync(file, doc.toString()); return null;
+      }
+
+      const clauses = ((proposes?.items ?? []) as any[])
+        .map((p) => String(p?.get?.("text") ?? "").trim()).filter(Boolean);
+      if (clauses.length) {
+        const configured = String(a.get("accept_into") ?? doc.get("accept_into") ?? "").trim();
+        const dest = configured || ((a.get("spec", true) as any)?.set ? "spec.acceptance" : "accepted");
+        if (!/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/.test(dest)) return `accept_into is not a valid path: ${dest}`;
+        appendAt(a, dest, clauses);
+      }
+      item.set("reconciled", now);
+      item.set("reconciled_by", "person");
       writeFileSync(file, doc.toString()); return null;
     }
   return `no area called ${area}`;
@@ -187,6 +257,17 @@ const server = createServer(async (req, res) => {
       } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
     }); return;
   }
+  if (url === "/api/reconcile" && req.method === "POST") {
+    let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+      try {
+        const b = JSON.parse(body);
+        const err = reconcile(String(b.area), String(b.question), b.action === "reject" ? "reject" : "accept");
+        if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
+        sky = readSky(ROOT); push();
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
+    }); return;
+  }
   if (url === "/api/proposal" && req.method === "POST") {
     let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
       try {
@@ -214,8 +295,11 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   pollAgents();
   setInterval(() => { pollAgents(); }, 1500);
-  // the orchestrator: reaches for stars a person placed. SKY_NO_ORCHESTRATOR=1 to run without it.
-  if (!process.env.SKY_NO_ORCHESTRATOR) {
+  // the orchestrator: reaches for stars a person placed. Set SKY_NO_ORCHESTRATOR to
+  // 1/true/yes/on to run without it. "0", "false", "no" and empty all leave it ON,
+  // so the obvious way to switch it back on actually works.
+  const orchestratorOff = /^(1|true|yes|on)$/i.test((process.env.SKY_NO_ORCHESTRATOR ?? "").trim());
+  if (!orchestratorOff) {
     setInterval(async () => {
       if (modelBusy) return; modelBusy = true;
       try { const r = await orchestrate(ROOT, 2); if (r.error) process.stderr.write(`orchestrator: ${r.error}\n`);
@@ -224,5 +308,5 @@ server.listen(PORT, "127.0.0.1", () => {
       finally { modelBusy = false; }
     }, 6000);
   }
-  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  access  ${shareToken() ? "shared — a key is required from anywhere but this machine" : "this machine only"}\n  orchestrator  ${process.env.SKY_NO_ORCHESTRATOR ? "off" : "watching sky.yaml"}\n  model   ${PROVIDER}\n  activity  ${sources.join(", ")}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
+  process.stdout.write(`skylight  http://127.0.0.1:${PORT}\n  repo    ${ROOT}\n  access  ${shareToken() ? "shared — a key is required from anywhere but this machine" : "this machine only"}\n  orchestrator  ${orchestratorOff ? "off" : "watching sky.yaml"}\n  model   ${PROVIDER}\n  activity  ${sources.join(", ")}\n  areas   ${sky.stars.reduce((n, s) => n + s.areas.length, 0)}\n  agents  ${agents.length} (${agents.filter((a) => a.state === "active").length} active)\n`);
 });
