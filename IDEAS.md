@@ -60,9 +60,9 @@ paths in the UI · sentences where a mark will do.
 - `·` **Start a sky from a paragraph.** Drop a PRD, a Notion export, or three sentences into an empty
   folder and get a first `sky.yaml` proposed: stars, areas, files guessed from the tree. The 0→1
   moment for a new project.
-- `·` **Dispatch.** Drag a ship from HQ onto a star: a Claude Code run starts in a worktree with the
+- `✓` 2026-09-08 (as click a star → send a ship) **Dispatch.** Drag a ship from HQ onto a star: a Claude Code run starts in a worktree with the
   star as its prompt. Presence puts the ship on the sky while it works. The first act of steering.
-- `·` **Postcards.** A finished agent run leaves three lines on its star: what it did, what it
+- `✓` 2026-09-08 **Postcards.** A finished agent run leaves three lines on its star: what it did, what it
   doubted, what it did not touch. Not a log; a postcard.
 - `·` **Conflict comets.** Two ships at the same file: a comet crosses between them. Click it to see
   the overlapping hunks. Only drawn when it is true.

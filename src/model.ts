@@ -23,6 +23,9 @@ function binary(root: string, provider: ModelProvider): string {
   return "claude";
 }
 
+/** the Claude Code binary this machine has, for ships */
+export const claudeBinary = (root: string): string => binary(root, "claude");
+
 export async function callModel(root: string, prompt: string): Promise<string> {
   const provider = modelProvider();
   const dir = mkdtempSync(join(tmpdir(), "skylight-model-"));

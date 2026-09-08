@@ -9,7 +9,9 @@ import { join, relative } from "node:path";
 import { parse } from "yaml";
 
 export type Proposal2 = { kind: string; text: string; by?: string; when?: string };
-export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[] };
+/** a ship a person sent to this star, and how it came back */
+export type RunInfo = { id: string; branch: string; status: string; when?: string; ended?: string; said?: string; files?: number; note?: string };
+export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[]; run?: RunInfo; landed?: string; proof?: string };
 export type Area = {
   name: string; about: string; ring: number; ticks: number; files: number; lines: number;
   paths: string[]; items: Item[]; lastTouched: number | null;
@@ -40,12 +42,18 @@ function split(s: string): { text: string; more: string } {
 function entry(e: any): { text: string; more: string; at?: [number, number]; when?: string; by?: string; answer?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[] } {
   if (typeof e === "string") return split(e);
   const base: any = split(String(e?.text ?? ""));
+  if (e?.more && !base.more) base.more = String(e.more);
   const at = Array.isArray(e?.at) && e.at.length === 2 ? [Number(e.at[0]), Number(e.at[1])] as [number, number] : undefined;
   if (at) base.at = at;
   if (e?.when) base.when = String(e.when);
   if (e?.by) base.by = String(e.by);
   if (e?.answer) base.answer = String(e.answer);
-  for (const k of ["seen", "context", "near", "from", "reconciled", "restates"]) if (e?.[k]) base[k] = String(e[k]);
+  for (const k of ["seen", "context", "near", "from", "reconciled", "restates", "landed", "proof"]) if (e?.[k]) base[k] = String(e[k]);
+  if (e?.run && typeof e.run === "object" && e.run.id) {
+    const r = e.run;
+    base.run = { id: String(r.id), branch: String(r.branch ?? ""), status: String(r.status ?? ""), when: r.when ? String(r.when) : undefined, ended: r.ended ? String(r.ended) : undefined,
+      said: r.said ? String(r.said) : undefined, files: Number.isFinite(Number(r.files)) ? Number(r.files) : undefined, note: r.note ? String(r.note) : undefined };
+  }
   // The orchestrator's proposed consequences travel to the page so a person can
   // accept or reject them there. Structured, not stringified.
   if (typeof e?.addresses_question === "boolean") base.addresses_question = e.addresses_question;
