@@ -6,37 +6,23 @@
  * area under the star it names, its ideas turned into to-dos — or vetoes it.
  * Nothing moves on its own.
  *
- * The model is reached through the Claude Code binary (`claude -p`), which
+ * The model is reached through the selected Codex or Claude CLI, which
  * uses whatever the person is already signed in with. No key handling here.
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDocument } from "yaml";
+import { callModel } from "./model.ts";
 
 export type Proposal = { name: string; star: string; about: string; ideas: string[] };
 
-function claudeBin(root: string): string | null {
-  const candidates = [
-    process.env.SKY_CLAUDE,
-    ...["claude-agent-sdk-darwin-arm64", "claude-agent-sdk-darwin-x64", "claude-agent-sdk-linux-x64"].flatMap((p) => [
-      join(root, "node_modules", "@anthropic-ai", p, "claude"),
-      join(process.cwd(), "node_modules", "@anthropic-ai", p, "claude"),
-    ]),
-  ].filter(Boolean) as string[];
-  for (const c of candidates) if (existsSync(c)) return c;
-  try { return execFileSync("which", ["claude"], { encoding: "utf8" }).trim() || null; } catch { return null; }
-}
-
-export function gather(root: string): { proposals: Proposal[]; error?: string } {
+export async function gather(root: string): Promise<{ proposals: Proposal[]; error?: string }> {
   const file = join(root, "sky.yaml");
   const doc = parseDocument(readFileSync(file, "utf8"));
   const data: any = doc.toJS();
   const ideas: string[] = (data.ideas ?? []).map((i: any) => (typeof i === "string" ? i : i?.text ?? "")).filter(Boolean);
   const stars: string[] = (data.stars ?? []).map((s: any) => s.name);
   if (ideas.length < 2) return { proposals: [], error: "fewer than two loose ideas — nothing to gather" };
-  const bin = claudeBin(root);
-  if (!bin) return { proposals: [], error: "no claude binary found — set SKY_CLAUDE to the path of one" };
 
   const prompt = `You are grouping loose ideas for a software project called "${data.name}" (${data.goal ?? ""}).
 The project has these north stars (its major parts): ${stars.join(", ")}.
@@ -50,10 +36,7 @@ Answer with JSON only, no prose, no fences: [{"name":"...","star":"...","about":
 
   let out = "";
   try {
-    out = execFileSync(bin, ["-p", prompt, "--output-format", "text"], {
-      encoding: "utf8", maxBuffer: 4 * 1024 * 1024, timeout: 120_000,
-      env: { ...process.env, ANTHROPIC_API_KEY: process.env.SKY_API_KEY ?? "" },
-    });
+    out = await callModel(root, prompt);
   } catch (e) {
     return { proposals: [], error: `the model call failed: ${(e as Error).message.split("\n")[0]}` };
   }
@@ -66,8 +49,15 @@ Answer with JSON only, no prose, no fences: [{"name":"...","star":"...","about":
     .map((p) => ({ name: String(p.name).toLowerCase().slice(0, 32), star: p.star, about: String(p.about ?? "").slice(0, 160),
                    ideas: p.ideas.filter((i) => ideas.includes(i)) }))
     .filter((p) => p.ideas.length);
-  doc.set("proposed", proposals);
-  writeFileSync(file, doc.toString());
+  // A model call yields to the UI: merge into the latest file, never an old snapshot.
+  const latest = parseDocument(readFileSync(file, "utf8"));
+  const current = latest.toJS();
+  const currentIdeas = (current.ideas ?? []).map((i: any) => typeof i === "string" ? i : i?.text ?? "").filter(Boolean);
+  const currentStars = (current.stars ?? []).map((s: any) => s.name);
+  if (JSON.stringify(currentIdeas) !== JSON.stringify(ideas) || JSON.stringify(currentStars) !== JSON.stringify(stars))
+    return { proposals: [], error: "Ideas changed while gathering. Please gather again." };
+  latest.set("proposed", proposals);
+  writeFileSync(file, latest.toString());
   return { proposals };
 }
 
@@ -95,7 +85,7 @@ export function decide(root: string, name: string, action: "accept" | "veto"): s
 }
 
 if (process.argv[1]?.endsWith("gather.ts")) {
-  const r = gather(process.argv[2] ?? process.cwd());
+  const r = await gather(process.argv[2] ?? process.cwd());
   if (r.error) { console.error(r.error); process.exit(1); }
   for (const p of r.proposals) console.log(`${p.name} · under ${p.star}\n  ${p.about}\n  ${p.ideas.map((i) => "- " + i).join("\n  ")}`);
 }

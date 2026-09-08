@@ -9,6 +9,9 @@
   html,body { height:100%; }
   body { margin:0; background:var(--void); color:var(--ink); overflow:hidden; font-family:"IBM Plex Mono",ui-monospace,monospace; }
   canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; cursor:none; }
+  .project-label { position:fixed; top:20px; left:24px; z-index:7; pointer-events:none; }
+  .project-label h1 { margin:0; font:500 12px "IBM Plex Mono",monospace; letter-spacing:.15em; text-transform:uppercase; }
+  .project-label p { margin:7px 0 0; max-width:calc(100vw - 48px); color:var(--dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bar { position:fixed; bottom:0; left:0; right:0; z-index:8; display:flex; align-items:center; gap:14px; padding:15px 22px;
          font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); pointer-events:none; }
   .bar b { color:var(--ink); font-weight:500; }
@@ -78,12 +81,14 @@
 </style>
 
 <canvas id="c"></canvas>
+<header class="project-label"><h1 id="projectName">Skylight</h1><p id="projectGoal"></p></header>
 <div class="bar">
   <span class="mark" id="mark" title=""><svg viewBox="0 0 20 20"><path d="M10 1.5 L11.9 8.1 L18.5 10 L11.9 11.9 L10 18.5 L8.1 11.9 L1.5 10 L8.1 8.1 Z"/></svg></span>
   <span class="live off" id="livedot"><i></i><span id="livetext">snapshot</span></span>
   <button id="back" hidden>galaxy</button>
   <span id="where"></span>
   <span class="sp"></span>
+  <button id="activitybtn" aria-expanded="false">Activity</button>
   <button id="fsbtn" title="fullscreen · f">⛶</button>
   <button id="keybtn" title="key · k">?</button>
 </div>
@@ -100,15 +105,16 @@
 <script>
 /* ============================================================ language ===
    galaxy        the full view — everything
-   star system   an architecture department: a north star and its features
+   star system   a major product capability: a north star and its features
    constellation one feature, opened — its stars are its work
-   orchestrator  the orange star in the middle, where agents come home
+   activity      current coding work; completed sessions live in history
    place a star  add a line to sky.yaml from here
    pin an idea   a loose star, attached to nothing yet
    ======================================================================== */
-const RINGS = ["planned","started","built","tested","live"];
+const RINGS = ["planned","started","built","tests mapped","live"];
 const KIND = { done:"done", todo:"to do", open:"open question", explore:"exploration" };
 let PROPOSALS = [];
+let activityConnected = false;
 /* a snapshot has no server to write to, so what you place is kept in this
    browser only — marked as such, and gone if you clear the site's data */
 const LOCAL_KEY = () => "skylight-local:" + (NAME||"sky");
@@ -120,14 +126,19 @@ const CALLS = ["vega","altair","deneb","rigel","spica","mira","sirius","antares"
 const callsign = (id) => { let h = 0; for (const c of id) h = (h*31 + c.charCodeAt(0)) >>> 0; return CALLS[h % CALLS.length]; };
 
 function load(data){
+  activityConnected = true;
   const sky = data.sky; ROOT = data.root || ""; FILE = data.file || "sky.yaml"; GOAL = sky.goal || ""; NAME = sky.name || "sky";
+  document.title = `${NAME} · Skylight`;
+  document.getElementById("projectName").textContent = NAME;
+  document.getElementById("projectGoal").textContent = GOAL;
   mark.title = `${sky.name} · ${sky.goal||""}`;
+  AREA_OF = {};
   SYSTEMS = sky.stars.map((s,i) => ({
     name:s.name, goal:s.goal,
     areas:s.areas.map((a,j) => {
       const k = s.name+"/"+a.name;
       if (!angles.has(k)) angles.set(k, (j/s.areas.length)*TAU - Math.PI/2 + i*.6);
-      for (const p of a.paths) AREA_OF[p] = { sys:s.name, area:a.name };
+      for (const p of a.paths) if (!AREA_OF[p]) AREA_OF[p] = { sys:s.name, area:a.name };
       return { name:a.name, about:a.about, ring:a.ring, ticks:a.ticks, files:a.files, lines:a.lines, items:a.items.slice(), sys:null, ang:angles.get(k), agents:[] };
     }),
   }));
@@ -141,11 +152,13 @@ function load(data){
   AGENTS = data.agents.map((g,i) => {
     const where = g.lastFile ? AREA_OF[g.lastFile] : null;
     const areas = {}; for (const t of g.touched||[]) { const w = AREA_OF[t.file]; if (w) areas[w.area] = (areas[w.area]||0)+1; }
-    return { ...g, where, areas, seed:i*2.3+.7, call: callsign(g.id) };
+    return { ...g, where, areas, seed:i*2.3+.7, call: `${g.provider || "coding"} · ${g.short || g.id.slice(0,8)}` };
   });
+  renderActivity();
   for (const s of SYSTEMS) for (const a of s.areas) a.agents = AGENTS.filter(g => g.state==="active" && g.where && g.where.sys===s.name && g.where.area===a.name);
   // the difference from last time is news: it rides across the sky on a meteor
-  const snap = { ring:{}, done:{}, agent:{}, proposals:PROPOSALS.length };
+  const snap = { ring:{}, done:{}, agent:{}, proposals:PROPOSALS.length, pending:0 };
+  for (const s of SYSTEMS) for (const a of s.areas) for (const it of a.items) if (it.kind==="open" && it.proposes && it.proposes.length) snap.pending++;
   for (const s of SYSTEMS) for (const a of s.areas){ snap.ring[s.name+"/"+a.name]=a.ring; snap.done[s.name+"/"+a.name]=a.items.filter(i=>i.kind==="done").length; }
   for (const g of AGENTS) snap.agent[g.id] = { state:g.state, where:g.where?g.where.area:null, file:g.lastFile };
   if (prevSnap){
@@ -156,6 +169,7 @@ function load(data){
       if (w.where!==n.where && n.where) news.push({ text:`${callsign(id)} → ${n.where}`, sys:null, area:n.where, kind:"agent" });
       if (w.state!=="idle" && n.state==="idle") news.push({ text:`${callsign(id)} came home`, kind:"agent" }); }
     if (snap.proposals > prevSnap.proposals) news.push({ text:`${snap.proposals-prevSnap.proposals} proposed`, kind:"proposal" });
+    if (snap.pending > prevSnap.pending){ const d = snap.pending-prevSnap.pending; news.push({ text:`${d} answer${d===1?"":"s"} read · accept or reject`, kind:"proposal" }); }
   }
   if (prevSnap && news.length){ const c = {}; for (const n of news) c[n.kind]=(c[n.kind]||0)+1;
     lastTurn = Object.entries(c).map(([k,v])=>`${v} ${k}`).join(" · "); for (const n of news) if (n.area) recent.set(n.area, performance.now()); }
@@ -177,13 +191,18 @@ let W=0,H=0,DPR=1, nodes=[], hover=null, mouse=null, t0=performance.now(), dust=
 let level = { kind:"all", sys:null, area:null }, prev = null, fade = 1, opened = null;
 let motion = 0, lastNow = 0;     // the clock everything moves by — it stops while you are reading something
 let prevSnap = null, news = [], sparks = [], trail = [], dawn = 0, dawnFlash = 0, waiting = 0, lastNews = 0, lastAmbient = 0, lastTurn = "", recent = new Map();
-/* what waits on a person: proposals, questions, and stars that are done but not yet lit */
+/* what waits on a person: proposals, questions, answers whose consequences the
+   orchestrator has proposed, and stars that are done but not yet lit */
 function queue(){
   const q = [];
   for (const p of PROPOSALS) q.push({ kind:"proposal", text:p.name, more:p.about, p, action:"accept · veto" });
   for (const s of SYSTEMS) for (const a of s.areas){
-    for (const it of a.items) if (it.kind==="open") q.push({ kind:"question", text:it.text, more:it.more, area:a, action:"answer" });
-    if (a.ring===3) q.push({ kind:"light", text:a.name, more:"tested — is it live?", area:a, action:"light it" });
+    // an answered question carrying proposals is not asking to be answered again.
+    // it is asking to be settled — a different thing, so a different button.
+    for (const it of a.items) if (it.kind==="open") q.push(it.proposes && it.proposes.length
+      ? { kind:"reconcile", text:it.text, more:it.more, area:a, item:it, action:"accept · reject" }
+      : { kind:"question", text:it.text, more:it.more, area:a, action:"answer" });
+    if (a.ring===3) q.push({ kind:"light", text:a.name, more:"tests mapped — verified and live?", area:a, action:"light it" });
   }
   return q;
 }
@@ -200,10 +219,11 @@ const KEYS = {
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-dasharray="1.6 1.6"/></svg>double-click empty space to pin an idea where you clicked</span>`,
   system: `<span><svg viewBox="0 0 24 12"><path d="M2 6H14" stroke="rgba(226,234,244,.3)"/><circle cx="16" cy="6" r="3" fill="#fff"/></svg>a feature — click to open its constellation</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.4" fill="none" stroke="#48525f" stroke-dasharray="1.5 1.5"/></svg>planned, not started</span>
-        <span>rings · planned → started → built → tested → live · closer in is more done</span>`,
+        <span>rings · planned → started → built → tests mapped → live · closer in is more done</span>`,
   hq: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-width="1.3"/></svg>a proposal — accept or veto</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#7ddc9a" stroke-width="1.3"/></svg>you answered, and the orchestrator read it — accept or reject what it changes</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>a question only you can answer</span>
-        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tested, not yet live — light it</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tests mapped, not verified — review before marking live</span>
         <span>click anything to answer it, right there · esc or the galaxy line to leave</span>`,
   area: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>done</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.6" fill="none" stroke="rgba(226,234,244,.55)" stroke-dasharray="1.5 1.5"/></svg>to do</span>
@@ -377,7 +397,7 @@ function drawSun(time, alpha){
   ctx.save(); ctx.translate(cx,cy); ctx.rotate(-time*.0003); ctx.beginPath();
   for (let i=0;i<12;i++){ const rr = i%2 ? 1.6 : 4.2, a = i*Math.PI/6; ctx.lineTo(Math.cos(a)*rr, Math.sin(a)*rr); }
   ctx.closePath(); ctx.fillStyle="#ffd9c2"; ctx.fill(); ctx.restore();
-  const idle = AGENTS.filter(g => g.state!=="active" || !g.where);
+  const idle = AGENTS.filter(g => g.state==="active" && !g.where);
   idle.forEach((g,i) => { const outer = i%2===1, rr = outer ? R*1.6 : R, ang = (i/Math.max(1,idle.length))*TAU + time*(outer?-.00009:.00013) + g.seed;
     const x = cx+Math.cos(ang)*rr, y = cy+Math.sin(ang)*rr*(outer?TILT*.8:TILT), d = (Math.sin(ang)+1)/2;
     ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
@@ -437,7 +457,7 @@ function drawDesk(time, alpha){
     const mx = cx + (x-cx)*.35 + nx*22, my = cy - (cy-y)*.45;
     ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,107,59,.08)"; ctx.lineWidth=4; ctx.stroke(); ctx.restore();
     ctx.beginPath(); ctx.moveTo(cx,cy-R*TILT); ctx.quadraticCurveTo(mx,my,x,y); ctx.strokeStyle="rgba(255,150,100,.45)"; ctx.setLineDash([2,7]); ctx.lineDashOffset=time*.02; ctx.lineWidth=1.1; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
-    const col = it.kind==="question" ? "#8fb4ff" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="light" ? "255,255,255" : "255,107,59";
+    const col = it.kind==="question" ? "#8fb4ff" : it.kind==="reconcile" ? "#7ddc9a" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="reconcile" ? "125,220,154" : it.kind==="light" ? "255,255,255" : "255,107,59";
     const hot = hover && hover.desk===it;
     bloom(x,y,hot?28:18,rgb,hot?.6:.35);
     if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
@@ -455,8 +475,15 @@ function drawDesk(time, alpha){
 /* answering, right on the item */
 function showDeskItem(it, x, y){
   const b = (id, label, warm) => `<button id="${id}"${warm?' class="warm"':''}>${label}</button>`;
-  const acts = it.kind==="proposal" ? b("acc","accept") + b("veto","veto",true) : it.kind==="question" ? b("answer","answer") : b("light","light it");
-  const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}` : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tested · ${esc(it.area.about||"")}`;
+  const acts = it.kind==="proposal" ? b("acc","accept") + b("veto","veto",true)
+    : it.kind==="reconcile" ? b("rec","accept") + b("rej","reject",true)
+    : it.kind==="question" ? b("answer","answer") : b("light","light it");
+  const props = it.kind==="reconcile" ? (it.item.proposes||[]) : [];
+  const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}`
+    : it.kind==="reconcile" ? `<b style="color:#7ddc9a">you said</b> ${esc(it.more||"")}`
+        + (it.item.addresses_question===false && it.item.restates ? `<br><b style="color:#ffb08a">answers instead</b> ${esc(it.item.restates)}` : "")
+        + props.map(p=>`<br><b style="color:#7ddc9a">${esc(p.kind)}</b> ${esc(p.text)}`).join("")
+    : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tests mapped · ${esc(it.area.about||"")}`;
   decideEl.className = "panel answer";
   decideEl.innerHTML = `<div class="row"><b title="${esc(it.text)}">${esc(it.text)}</b><span class="acts">${acts}</span></div><p class="ctx">${ctx1}</p>` +
     (it.kind==="question" ? `<input id="ans" placeholder="the answer" autocomplete="off" spellcheck="false">` : "") + `<p class="note" id="decnote"></p>`;
@@ -473,6 +500,8 @@ function showDeskItem(it, x, y){
   on("acc", () => post("/api/proposal", { name: it.p.name, action:"accept" }));
   on("veto", () => post("/api/proposal", { name: it.p.name, action:"veto" }));
   on("light", () => post("/api/light", { area: it.area.name }));
+  on("rec", () => post("/api/reconcile", { area: it.area.name, question: it.text, action:"accept" }));
+  on("rej", () => post("/api/reconcile", { area: it.area.name, question: it.text, action:"reject" }));
   on("answer", () => post("/api/answer", { area: it.area.name, question: it.text, text: document.getElementById("ans").value.trim() }));
   const ans = document.getElementById("ans"); if (ans){ ans.focus(); ans.addEventListener("keydown", e => { e.stopPropagation(); if (e.key==="Enter") document.getElementById("answer").click(); }); }
 }
@@ -631,15 +660,15 @@ function draw(now){
     const ago = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
     const g = hover.agent;
     tip.innerHTML = hover.item ? `${esc(hover.item.text)}${hover.item.more?`<em>${esc(hover.item.more)}</em>`:""}${hover.item.context?`<em style="color:#ff9b70">orchestrator · ${esc(hover.item.context)}</em>`:hover.item.by==="person"&&!hover.item.seen?`<em style="color:#ff9b70">placed · nothing has reached for it yet</em>`:""}<small>${KIND[hover.item.kind]}${hover.item.by?" · by "+esc(hover.item.by):""}${hover.item.src?" · from "+esc(hover.item.src):""}</small>`
-      : hover.polaris ? `<span style="color:#fff">${esc(NAME)}</span><em>${esc(GOAL||"no goal set — add goal: to sky.yaml")}</em><small>${SYSTEMS.length} systems · ${SYSTEMS.reduce((n,s)=>n+s.areas.length,0)} areas · ${SYSTEMS.reduce((n,s)=>n+s.areas.filter(a=>a.ring===4).length,0)} live · ${AGENTS.filter(g=>g.state==="active").length} agent${AGENTS.filter(g=>g.state==="active").length===1?"":"s"} working</small>`
+      : hover.polaris ? `<span style="color:#fff">${esc(NAME)}</span><em>${esc(GOAL||"no goal set — add goal: to sky.yaml")}</em><small>${SYSTEMS.length} systems · ${SYSTEMS.reduce((n,s)=>n+s.areas.length,0)} areas · ${SYSTEMS.reduce((n,s)=>n+s.areas.filter(a=>a.ring===4).length,0)} live · ${AGENTS.filter(g=>g.state==="active").length} coding session${AGENTS.filter(g=>g.state==="active").length===1?"":"s"} working</small>`
       : hover.desk ? `<span style="color:#fff">${esc(hover.desk.text)}</span>${hover.desk.more?`<em>${esc(hover.desk.more)}</em>`:""}<small>${hover.desk.kind} · ${hover.desk.action}</small>`
       : hover.gather ? `sort the loose ideas<em>an agent reads them and proposes features they could become, under a star system. you accept or veto each.</em>`
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.call}${g.subagent?" · a tender":""}</span><em>${esc(g.intent||"no stated intent")}</em>
-             <div class="ch"><b>state</b><span>${g.state}${g.where?" · at "+esc(g.where.area):" · home"}</span>
-             <b>character</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
+      : g ? `<span style="color:#ff6b3b">${g.call} · ${esc(g.provider || "agent")}${g.subagent?" · delegated":""}</span><em>${esc(g.intent||"Coding task not labeled")}</em><small>${esc(activityDetail(g))}</small>
+             <div class="ch"><b>state</b><span>${g.state}${g.where?" · at "+esc(g.where.area):" · area not identified"}</span>
+             <b>tools</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
              <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
              <b>last</b><span>${g.lastFile?esc(g.lastFile)+" · ":""}${ago(g.lastAt)}</span></div>`
       : `${esc(hover.area.name)}${hover.area.about?`<em>${esc(hover.area.about)}</em>`:""}<small>${RINGS[hover.area.ring]} · ${hover.area.items.length} tracked${hover.area.agents.length?` · ${hover.area.agents.length} agent${hover.area.agents.length>1?"s":""} here`:""} · click to open</small>`;
@@ -653,12 +682,34 @@ function draw(now){
   drawLeader(); drawSparks(); if (!REDUCED) drawCursor(time);
   if (!REDUCED) requestAnimationFrame(draw);
 }
+function activityDetail(g){
+  const clock = t => new Date(t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  const file = (g.touched || []).filter(t => t.file === g.lastFile).at(-1);
+  return [g.lastTool ? `Last observed tool: ${g.lastTool}` : "No tool activity captured",
+    file ? `Last file: ${file.file} (${clock(file.at)})` : "No project file identified"].join(" · ");
+}
+function disconnectActivity(){
+  activityConnected = false;
+  for (const g of AGENTS) if (g.state === "active") g.state = "unknown";
+  for (const s of SYSTEMS) for (const a of s.areas) a.agents = [];
+  renderActivity();
+  dot.classList.add("off"); dot.title = "Disconnected — activity is not current";
+  livetext.textContent = "disconnected";
+}
+function renderActivity(){
+  const active = AGENTS.filter(g=>g.state==="active"), uncertain = AGENTS.filter(g=>g.state==="unknown"), history = AGENTS.filter(g=>g.state==="idle");
+  document.getElementById("activitybtn").textContent = activityConnected ? `Activity · ${active.length}` : "Activity · disconnected";
+  const row = g => `<div class="a ${g.state}"><b>${esc(g.call)}${g.subagent?" · delegated":""}</b><p>${esc(g.intent || "Coding task not labeled")}</p><p>${esc(activityDetail(g))}</p><small>${g.state==="unknown"?"Status unknown · no recent event":g.state==="active"?"Working":"Turn ended"} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
+  const expanded = crew.querySelector("details")?.open;
+  crew.innerHTML = `${activityConnected ? "" : "<p>Disconnected — activity is not current.</p>"}<h4>Coding activity</h4>${active.map(row).join("") || "<p>No coding session currently working.</p>"}${uncertain.length?`<h4>Status unknown</h4>${uncertain.map(row).join("")}`:""}<details ${expanded?"open":""}><summary>Recent history · ${history.length}</summary>${history.map(row).join("") || "<p>No recent completed sessions.</p>"}</details>`;
+}
+document.getElementById("activitybtn").addEventListener("click",()=>{crew.hidden=!crew.hidden; document.getElementById("activitybtn").setAttribute("aria-expanded",String(!crew.hidden)); if(!crew.hidden){renderActivity(); crew.style.right="22px"; crew.style.left="auto"; crew.style.top="auto"; crew.style.bottom="56px"; crew.style.maxHeight="70vh"; crew.style.overflowY="auto";}});
 function setChrome(){
   back.hidden = level.kind==="all";
   key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="hq"?"hq":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
   where.innerHTML = level.kind==="all" ? "" : level.kind==="hq" ? `<b>hq</b>` : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
 }
-function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; decideEl.hidden = true; leader = null; setChrome(); }
+function go(next){ prev = level; level = next; fade = 0; hover = null; tip.classList.remove("on"); opened = next.kind==="area" ? next.area : null; unplant(); crew.hidden = true; document.getElementById("activitybtn").setAttribute("aria-expanded","false"); decideEl.hidden = true; leader = null; setChrome(); }
 function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); else if (level.kind==="system" || level.kind==="hq") go({ kind:"all" }); }
 
 /* ---- placing a star: implicit. Where you click decides what it is. ---------
@@ -749,10 +800,10 @@ const stamp = (t) => { const d = new Date(t), now = new Date();
   return d.toDateString() === now.toDateString() ? hm : d.toLocaleDateString([], { month:"short", day:"numeric" }) + " " + hm; };
 if (window.__SKY__){ SNAPSHOT = true; load(window.__SKY__); livetext.textContent = stamp(window.__SKY__.at); dot.title = "a snapshot, taken then"; }
 else {
-  fetch("/api/sky").then(r=>r.json()).then((d) => { load(d); livetext.textContent = stamp(d.at); }).catch(()=>{});
+  fetch("/api/sky").then(r=>r.json()).then((d) => { load(d); livetext.textContent = stamp(d.at); }).catch(disconnectActivity);
   const es = new EventSource("/events");
   es.addEventListener("sky", (e) => { const d = JSON.parse(e.data); load(d); dot.classList.remove("off"); livetext.textContent = stamp(d.at); dot.title = "live · last change"; });
-  es.onerror = () => { dot.classList.add("off"); dot.title = "reconnecting"; };
+  es.onerror = disconnectActivity;
 }
 go({ kind:"all" }); prev=null; fade=1; seedDust(); resize(); requestAnimationFrame(draw);
 </script>
