@@ -178,8 +178,8 @@ function load(data){
       if (n==="failed") news.push({ text:`lost at ${txt}`, area:an, kind:"agent" }); }
     for (const k in snap.tests){ const [an,txt]=k.split("/"), w=(prevSnap.tests||{})[k], n=snap.tests[k]; if (w===n) continue;
       const t = SYSTEMS.flatMap(s=>s.areas).find(a=>a.name===an)?.items.find(i=>i.text===txt)?.run?.tests || {};
-      if (n==="pass") news.push({ text:`${txt} · ${t.pass!==undefined?t.pass+" hold":"tests hold"}`, area:an, kind:"lit" });
-      if (n==="fail") news.push({ text:`${txt} · ${t.fail!==undefined?t.fail+" fail":"tests fail"}`, area:an, kind:"agent" }); }
+      if (n==="pass") news.push({ text:`${txt} · holds`, area:an, kind:"lit" });
+      if (n==="fail") news.push({ text:`${txt} · breaks ${t.fail!==undefined?t.fail+" test"+(t.fail===1?"":"s"):"the tests"}`, area:an, kind:"agent" }); }
     if (snap.pending > prevSnap.pending){ const d = snap.pending-prevSnap.pending; news.push({ text:`${d} answer${d===1?"":"s"} read · accept or reject`, kind:"proposal" }); }
   }
   if (prevSnap && news.length){ const c = {}; for (const n of news) c[n.kind]=(c[n.kind]||0)+1;
@@ -805,13 +805,13 @@ function evidenceLine(run){
   const t = run.tests; if (!t) return "";
   const n = (k) => t[k]!==undefined ? t[k] : null;
   const s = t.status==="running" ? `<span style="color:#8792a1">running the tests …</span>`
-    : t.status==="pass" ? `<b style="color:#e2eaf4">${n("pass")!==null?n("pass")+" tests hold":"the tests hold"}</b>`
-    : t.status==="fail" ? `<b style="color:#ff9b70">${n("fail")!==null?n("fail")+" fail":"the tests fail"}</b>${n("pass")!==null?` · ${n("pass")} hold`:""}${t.tail?`<br><span style="color:#8792a1">${esc(t.tail)}</span>`:""}`
+    : t.status==="pass" ? `<b style="color:#e2eaf4">holds</b>${n("pass")!==null?` <span style="color:#8792a1">· the project's ${n("pass")} tests pass on this branch</span>`:""}`
+    : t.status==="fail" ? `<b style="color:#ff9b70">breaks ${n("fail")!==null?n("fail")+(n("pass")!==null?" of "+(n("pass")+n("fail")):"")+" test"+(n("fail")===1?"":"s"):"the tests"}</b>${t.tail?`<br><span style="color:#8792a1">${esc(t.tail)}</span>`:""}`
     : t.status==="timeout" ? `<span style="color:#ff9b70">the tests did not finish in time</span>`
     : t.status==="none" ? `<span style="color:#48525f">no tests to run</span>` : `<span style="color:#ff9b70">could not run the tests</span>`;
   return s + (t.status!=="running" && t.status!=="none" ? ` <a id="retest" href="#" style="color:#48525f;text-decoration:none;letter-spacing:.1em;font-size:9px">CHECK AGAIN</a>` : "") + "<br>";
 }
-const evidenceShort = (run) => { const t = run.tests; if (!t) return ""; return t.status==="pass" ? `  ·  ${t.pass!==undefined?t.pass+" HOLD":"HOLDS"}` : t.status==="fail" ? `  ·  ${t.fail!==undefined?t.fail+" FAIL":"FAILS"}` : t.status==="running" ? "  ·  TESTING" : ""; };
+const evidenceShort = (run) => { const t = run.tests; if (!t) return ""; return t.status==="pass" ? "  ·  HOLDS" : t.status==="fail" ? `  ·  BREAKS${t.fail!==undefined?" "+t.fail:""}` : t.status==="running" ? "  ·  TESTING" : ""; };
 const agoText = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
 /* one line, current and timestamped: what it said, when; where it last was */
 function activityDetail(g){
