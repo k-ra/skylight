@@ -691,10 +691,12 @@ function drawOrbit(time, alpha){
   const cx=W/2, cy=H*.5-24, R=Math.min((W-200)/2, (H-210)/2/TILT), here=a.agents.length>0, atAlpha=a.agents.filter(g=>!g.star);
   ctx.globalAlpha=alpha;
   const hoveredRing = mouse ? Math.hypot(mouse.x-cx,(mouse.y-cy)/TILT)/R : -1;
+  ctx.save(); ctx.globalCompositeOperation="lighter"; const disc=ctx.createRadialGradient(cx,cy,0,cx,cy,R); disc.addColorStop(0,"rgba(120,150,190,.07)"); disc.addColorStop(.7,"rgba(90,110,150,.025)"); disc.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=disc; ctx.beginPath(); ctx.ellipse(cx,cy,R,R*TILT,0,0,TAU); ctx.fill(); ctx.restore();
   for (const [k,f] of Object.entries(ORB)){
     ctx.beginPath(); ctx.ellipse(cx,cy,R*f,R*f*TILT,0,0,TAU); ctx.lineWidth=1;
     ctx.setLineDash(k==="done"?[]:k==="todo"?[2,7]:k==="open"?[2,7]:[1,9]);
-    ctx.strokeStyle = k==="done"?"rgba(226,234,244,.16)":k==="open"?"rgba(143,180,255,.16)":"rgba(226,234,244,.1)"; ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = k==="done"?"rgba(226,234,244,.34)":k==="open"?"rgba(143,180,255,.34)":k==="todo"?"rgba(226,234,244,.28)":"rgba(226,234,244,.2)"; ctx.stroke(); ctx.setLineDash([]);
     if (Math.abs(hoveredRing-f) < .07){ ctx.font=font(9); ctx.textAlign="right"; ctx.fillStyle=k==="open"?"rgba(143,180,255,.8)":"rgba(135,146,161,.75)"; ctx.fillText(KIND[k].toUpperCase(), cx-R*f-8, cy+3); }
   }
   // each star keeps its own orbit angle: spread by the golden angle within its ring, then wobble
