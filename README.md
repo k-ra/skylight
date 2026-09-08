@@ -146,12 +146,34 @@ todo:
            when: …, ended: …, said: "did: …", files: 2, session: …, by: person }
 ```
 
+**Evidence.** When a ship comes back, Skylight runs the project's own tests on
+its branch (`npm test`, five-minute limit) and writes the result on the run:
+
+```yaml
+    tests: { status: pass, pass: 82, fail: 0, at: … }     # or fail · none · timeout
+```
+
+The card says *82 tests hold* or *3 fail* with the reporter's last line, the
+star wears a solid ring when they hold and a broken orange one when they do
+not, and the accept button reads *accept anyway* on a failing branch. It is
+pass or fail, never a score; the person still decides. *Check again* re-runs
+it. `SKY_SHIP_TESTS=0` turns it off.
+
 Ships may edit files and run `git add/commit/status/diff/log`, `npm test`,
 `npm run`, `npx`, `node`, `ls`, `cat`, `grep`. Set `SKY_SHIP_TOOLS` to a
 comma-separated list of Claude Code tool patterns to change that. Worktrees
 live under `~/.skylight/worktrees/`; a project that is not a git repository
 cannot send ships. If Skylight restarts while a ship is out, the run is marked
 failed rather than left looking alive.
+
+## Two ways of seeing a star
+
+A constellation is a chart: its stars joined into a figure, with what a person
+placed reaching from the star it belongs beside. Press `v` (or the ◎ in the
+bar) and the same star is seen as **orbits**: a slowly turning disc with its
+work on rings — done closest in, then to do, then questions, then explorations
+at the edge. Distance is state, as it is for a star system. Double-click on a
+ring to place a star of that kind. The choice is remembered in the browser.
 
 ## The gesture
 

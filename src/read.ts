@@ -10,7 +10,7 @@ import { parse } from "yaml";
 
 export type Proposal2 = { kind: string; text: string; by?: string; when?: string };
 /** a ship a person sent to this star, and how it came back */
-export type RunInfo = { id: string; branch: string; status: string; when?: string; ended?: string; said?: string; files?: number; note?: string };
+export type RunInfo = { id: string; branch: string; status: string; when?: string; ended?: string; said?: string; files?: number; note?: string; tests?: { status: string; pass?: number; fail?: number; tail?: string; at?: string } };
 export type Item = { kind: "done" | "todo" | "open" | "explore"; text: string; more: string; src?: string; at?: [number, number]; when?: string; by?: string; seen?: string; context?: string; near?: string; from?: string; reconciled?: string; restates?: string; addresses_question?: boolean; proposes?: Proposal2[]; run?: RunInfo; landed?: string; proof?: string };
 export type Area = {
   name: string; about: string; ring: number; ticks: number; files: number; lines: number;
@@ -53,6 +53,10 @@ function entry(e: any): { text: string; more: string; at?: [number, number]; whe
     const r = e.run;
     base.run = { id: String(r.id), branch: String(r.branch ?? ""), status: String(r.status ?? ""), when: r.when ? String(r.when) : undefined, ended: r.ended ? String(r.ended) : undefined,
       said: r.said ? String(r.said) : undefined, files: Number.isFinite(Number(r.files)) ? Number(r.files) : undefined, note: r.note ? String(r.note) : undefined };
+    if (r.tests && typeof r.tests === "object" && r.tests.status) {
+      const t = r.tests; base.run.tests = { status: String(t.status), ...(Number.isFinite(Number(t.pass)) && t.pass !== undefined ? { pass: Number(t.pass) } : {}),
+        ...(Number.isFinite(Number(t.fail)) && t.fail !== undefined ? { fail: Number(t.fail) } : {}), ...(t.tail ? { tail: String(t.tail) } : {}), ...(t.at ? { at: String(t.at) } : {}) };
+    }
   }
   // The orchestrator's proposed consequences travel to the page so a person can
   // accept or reject them there. Structured, not stringified.

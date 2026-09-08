@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { setTimeout as delay } from "node:timers/promises";
-import { Dispatcher } from "./dispatch.ts";
+import { Dispatcher, parseCounts } from "./dispatch.ts";
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
@@ -29,12 +29,16 @@ test("a ship goes out to a star, comes back with a postcard, is revised, and lan
   const tmp = mkdtempSync(join(tmpdir(), "sky-dispatch-")), root = join(tmp, "repo"), home = join(tmp, "worktrees");
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src/a.ts"), "export const a = 1;\n");
+  // the project's own tests: they pass unless the ship's revision breaks them
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "t", scripts: { test: "node check.cjs" } }));
+  writeFileSync(join(root, "check.cjs"), 'const s=require("node:fs").readFileSync("src/a.ts","utf8"); if (s.includes("revised")) { console.log("ℹ pass 1\\nℹ fail 1\\nrevised is not allowed"); process.exit(1); } console.log("ℹ pass 2\\nℹ fail 0");');
   writeFileSync(join(root, "sky.yaml"), `name: Test\ngoal: a test\nstars:\n  - name: core\n    areas:\n      - name: numbers\n        about: small numbers\n        files: [src/a.ts]\n        done: [ "a | the first one" ]\n        todo:\n          - Add b | the second one\n          - text: Add c\n            when: 2026-09-08T00:00:00Z\n            by: person\n`);
   git(root, "init", "-q", "-b", "main"); git(root, "add", "-A"); git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "start");
   const ship = join(tmp, "ship.cjs"); writeFileSync(ship, FAKE_SHIP); chmodSync(ship, 0o755);
   const sky = () => parse(readFileSync(join(root, "sky.yaml"), "utf8"));
   const runOf = () => sky().stars[0].areas[0].todo?.find((t: any) => t?.text === "Add b")?.run;
   const settle = async (want: string) => { for (let i = 0; i < 100; i++) { if (runOf()?.status === want) return; await delay(100); } assert.fail(`run never became ${want}: ${JSON.stringify(runOf())}`); };
+  const evidence = async (want: string) => { for (let i = 0; i < 150; i++) { if (runOf()?.tests?.status === want) return; await delay(100); } assert.fail(`tests never became ${want}: ${JSON.stringify(runOf()?.tests)}`); };
 
   let changes = 0;
   const d = new Dispatcher(root, { onChange: () => changes++ }, { bin: ship, home, env: { ...process.env, PATH: process.env.PATH } });
@@ -55,6 +59,8 @@ test("a ship goes out to a star, comes back with a postcard, is revised, and lan
     assert.equal(d.agents()[0].phase, "done");
     assert.equal(d.agents()[0].state, "idle");
     assert.equal(readFileSync(join(root, "src/a.ts"), "utf8"), "export const a = 1;\n", "main is untouched until a person accepts");
+    await evidence("pass");
+    assert.equal(runOf().tests.pass, 2); assert.equal(runOf().tests.fail, 0);
     assert.ok(changes > 2, "the sky was told as things happened");
 
     // revise: the same ship, same branch, resumed session
@@ -64,6 +70,8 @@ test("a ship goes out to a star, comes back with a postcard, is revised, and lan
     await settle("done");
     assert.match(runOf().said, /^did: revised/);
     assert.equal(runOf().files, 1, "still one file, two commits");
+    await evidence("fail");
+    assert.equal(runOf().tests.fail, 1); assert.equal(runOf().tests.tail, "revised is not allowed", "the last line of the reporter rides along");
 
     // accept: merged, moved to done with proof, worktree gone
     assert.equal(d.accept("numbers", "Add b"), null);
@@ -78,6 +86,14 @@ test("a ship goes out to a star, comes back with a postcard, is revised, and lan
     assert.ok(!existsSync(join(home, ...[])) || !git(root, "worktree", "list").includes(home), "the worktree is removed after landing");
     assert.equal(d.accept("numbers", "Add b"), "no such star");
   } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test("counts are read from whichever reporter spoke", () => {
+  assert.deepEqual(parseCounts("ℹ tests 82\nℹ pass 82\nℹ fail 0"), { pass: 82, fail: 0 });
+  assert.deepEqual(parseCounts("Tests:       3 failed, 80 passed, 83 total"), { pass: 80, fail: 3 });
+  assert.deepEqual(parseCounts("      Tests  40 passed | 2 failed (42)"), { pass: 40, fail: 2 });
+  assert.deepEqual(parseCounts("=== 12 passed in 0.4s ==="), { pass: 12 });
+  assert.deepEqual(parseCounts("nothing here"), {});
 });
 
 test("without git there is no ship, said plainly", () => {
