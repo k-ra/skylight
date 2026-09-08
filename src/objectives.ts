@@ -21,7 +21,10 @@ export function associate(a: Agent, sky: Sky): Agent {
   const areas = sky.stars.flatMap(s => s.areas.map(area => ({sys:s.name, area:area.name, definition:area})));
   const exact = areas.filter(x => a.assignedArea === x.area || (!!a.star && x.definition.items.some(i => i.text === a.star)));
   if (exact.length === 1) return {...a, where:{sys:exact[0].sys, area:exact[0].area, basis:'assigned'}};
-  const objective = words(a.intent ?? '');
+  // Mentioning somebody else's work or giving feedback is not an assignment.
+  const request = a.intent ?? '';
+  if (!/^(?:(?:please|can you|could you|would you|will you|i want (?:you )?to|i'd like (?:you )?to)\s+)?(?:fix|improve|implement|build|create|revise|rewrite|edit|review|audit|design|research|investigate|add|update|complete|finish|refactor|test|explain)\b/i.test(request)) return {...a, where:null};
+  const objective = words(request);
   if (!objective.size) return {...a, where:null};
   const scores = areas.map(x => {
     const names = words(x.area), detail = words(x.definition.about);

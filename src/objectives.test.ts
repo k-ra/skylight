@@ -21,3 +21,7 @@ test('prompt steering updates objectives but acknowledgement and injected contex
  updateObjective(a,'<in-app-browser-context source="ambient">ignore this</in-app-browser-context>\n## My request:\nImprove visual language and typography so that all the generated graphics feel coherent.',4);
  assert.equal(associate(a,sky).where?.area,'visual language');assert.equal(a.intentAt,4);
 });
+
+test('mentioning another agent is not a task assignment',()=>{
+ const a=agent(); a.intent="there should be an agent working on authoring and revision. i wonder why I don't see them";assert.equal(associate(a,sky).where,null);
+});
