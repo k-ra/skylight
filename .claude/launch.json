@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "skylight-trellis",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "src/serve.ts", "../trellis"],
+      "port": 4340
+    },
+    {
+      "name": "skylight-self",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "src/serve.ts", "."],
+      "port": 4342
+    }
+  ]
+}
