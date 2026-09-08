@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
 export type Agent = {
+  provider?: "claude" | "codex" | "reported";
   id: string; short: string; cwd: string; subagent: boolean;
   /** the first thing the person asked — the session's north star */
   intent: string | null;
@@ -26,7 +27,7 @@ export type Agent = {
   /** which tools it reaches for — its character, roughly */
   tools: Record<string, number>;
   /** active: touched something in the last 10 minutes */
-  state: "active" | "idle" | "gone";
+  state: "active" | "idle" | "unknown" | "gone";
 };
 
 const ACTIVE_MS = 10 * 60_000, GONE_MS = 24 * 3600_000;
@@ -96,7 +97,7 @@ export class Tailer {
 
     let a = this.agents.get(j.sessionId);
     if (!a) {
-      a = { id: j.sessionId, short: j.sessionId.slice(0, 8), cwd: j.cwd ?? "", subagent: !!j.isSidechain,
+      a = { provider: "claude", id: j.sessionId, short: j.sessionId.slice(0, 8), cwd: j.cwd ?? "", subagent: !!j.isSidechain,
             intent: null, lastAt: 0, lastFile: null, lastTool: null, touched: [], tools: {}, state: "gone" };
       this.agents.set(j.sessionId, a);
     }
