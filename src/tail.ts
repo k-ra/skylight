@@ -13,14 +13,17 @@
  * macOS and a 1.5 second poll is invisible.
  */
 import { existsSync, openSync, readSync, readdirSync, statSync, closeSync } from "node:fs";
+import { updateObjective } from "./objectives.ts";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 export type Agent = {
   provider?: "claude" | "codex" | "reported";
   id: string; short: string; cwd: string; subagent: boolean;
   /** the first thing the person asked — the session's north star */
   intent: string | null;
+  intentAt?: number; parentTask?: string; assignedArea?: string;
+  where?: {sys:string; area:string; basis:"assigned"|"inferred"} | null;
   lastAt: number; lastFile: string | null; lastTool: string | null;
   /** files under the repo this session has touched, newest last */
   touched: { file: string; at: number; tool: string }[];
@@ -101,6 +104,8 @@ export class Tailer {
     let j: any; try { j = JSON.parse(line); } catch { return false; }
     if (!j.sessionId || !j.timestamp) return false;
     const at = Date.parse(j.timestamp); if (!Number.isFinite(at)) return false;
+    const cwd = typeof j.cwd === "string" ? resolve(j.cwd) : this.agents.get(j.sessionId)?.cwd;
+    if (!cwd || !(cwd === resolve(this.root) || cwd.startsWith(resolve(this.root) + "/"))) return false;
     const content = j.message?.content;
     let touched = false, changed = false;
 
@@ -110,8 +115,7 @@ export class Tailer {
             intent: null, lastAt: 0, lastFile: null, lastTool: null, touched: [], tools: {}, state: "gone" };
       this.agents.set(j.sessionId, a);
     }
-    if (j.type === "user" && !a.intent && typeof content === "string" && content.trim() && !content.startsWith("<"))
-      a.intent = content.trim().slice(0, 160);
+    if (j.type === "user" && typeof content === "string") updateObjective(a, content, at);
     // the phase. an assistant record with words and no tool call ends a turn: the
     // session is waiting for the person. anything after that means it is working again.
     if (j.type === "assistant" && Array.isArray(content)) {
@@ -123,6 +127,7 @@ export class Tailer {
     } else if (j.type === "user" && a.phase !== "working") { a.phase = "working"; changed = true; if (at > a.lastAt) a.lastAt = at; }
     if (Array.isArray(content)) for (const b of content) {
       if (b.type !== "tool_use") continue;
+      a.lastTool = b.name;
       a.tools[b.name] = (a.tools[b.name] ?? 0) + 1;
       for (const file of this.pathsIn(b.input, j.cwd ?? this.root)) {
         a.touched.push({ file, at, tool: b.name }); if (a.touched.length > 400) a.touched.shift();
@@ -135,7 +140,7 @@ export class Tailer {
 
   /** everyone who has touched this repo and is not long gone */
   list(): Agent[] {
-    return [...this.agents.values()].filter((a) => a.touched.length && a.state !== "gone")
+    return [...this.agents.values()].filter((a) => a.lastAt > 0 && a.state !== "gone")
       .sort((x, y) => y.lastAt - x.lastAt);
   }
 }

@@ -156,7 +156,7 @@ export class Dispatcher {
     if (env.SKY_API_KEY) env.ANTHROPIC_API_KEY = env.SKY_API_KEY;
 
     const agent: Agent = { provider: "reported", id, short: id.slice(0, 8), cwd: dir, subagent: false, intent: text, lastAt: Date.now(), lastFile: null, lastTool: null,
-      touched: [], tools: {}, state: "active", phase: "working", note: revising ? "going back with your note" : "on its way", noteAt: Date.now(), task: id, star: text };
+      touched: [], tools: {}, state: "active", phase: "working", note: revising ? "going back with your note" : "on its way", noteAt: Date.now(), task: id, star: text, assignedArea: area };
     let child: ChildProcess;
     try { child = spawn(bin, args, { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] }); }
     catch (e) { this.finish(area, text, "failed", `could not start the ship: ${(e as Error).message}`); return { error: "could not start the ship" }; }

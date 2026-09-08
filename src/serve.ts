@@ -13,6 +13,7 @@ import { gather, decide } from "./gather.ts";
 import { orchestrate } from "./orchestrate.ts";
 import { gate, shareToken } from "./access.ts";
 import { Tailer, type Agent } from "./tail.ts";
+import { associate } from "./objectives.ts";
 import { CodexTailer } from "./codex-tail.ts";
 import { Dispatcher } from "./dispatch.ts";
 import { modelProvider } from "./model.ts";
@@ -31,7 +32,7 @@ let modelBusy = false;
 let sky: Sky = readSky(ROOT);
 let agents: Agent[] = [];
 const clients = new Set<import("node:http").ServerResponse>();
-const payload = () => JSON.stringify({ sky, agents: agents.map(a => ({...a, intent: sky.activity?.labels[a.id] ?? (a.provider === "reported" ? a.intent : null)})), at: Date.now(), root: ROOT, file: join(ROOT, "sky.yaml"), modelProvider: PROVIDER });
+const payload = () => JSON.stringify({ sky, agents: agents.map(a => associate(a, sky)), at: Date.now(), root: ROOT, file: join(ROOT, "sky.yaml"), modelProvider: PROVIDER });
 const push = () => { const data = `event: sky\ndata: ${payload()}\n\n`; for (const c of clients) c.write(data); };
 
 /**
@@ -54,6 +55,7 @@ function presence(b: any): string | null {
   const a: Agent = { provider: "reported", id, short: id.slice(0, 8), cwd: ROOT, subagent: !!b.subagent, intent: typeof b.intent === "string" ? b.intent.slice(0, 160) : prev?.intent ?? null,
     lastAt: Date.now(), lastFile: file, lastTool: typeof b.tool === "string" ? b.tool : "reported", touched: [...(prev?.touched ?? []), ...(file ? [{ file, at: Date.now(), tool: "reported" }] : [])].slice(-400),
     tools: prev?.tools ?? {}, state: b.state === "idle" || phase === "done" || phase === "failed" ? "idle" : "active",
+    assignedArea: typeof b.area === "string" ? b.area : prev?.assignedArea,
     phase, note, noteAt: typeof b.note === "string" ? Date.now() : prev?.noteAt, task: typeof b.task === "string" ? b.task.slice(0, 80) : prev?.task ?? null };
   reported.set(id, a); return null;
 }

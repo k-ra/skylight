@@ -39,3 +39,9 @@ test("a turn that ends with words is a ship waiting for the person; the next rec
     assert.equal(t.list()[0].note, "Should I also rename the session cookie?", "the last thing it said stays until it says something else");
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
+
+test("a scoped Claude task is visible before touching files; unrelated tasks stay excluded", () => {
+ const tmp=mkdtempSync(join(tmpdir(),'sky-task-')),root=join(tmp,'repo'),projects=join(tmp,'sessions');mkdirSync(root);
+ transcript(root,projects,[rec('user','Improve authoring and revision',Date.now(),root),{...rec('user','Unrelated task',Date.now(),root+'-other'),sessionId:'other'}]);
+ try {const t=new Tailer(root,()=>{},projects);t.poll();assert.deepEqual(t.list().map(a=>a.id),['s1']);assert.equal(t.list()[0].lastFile,null);} finally {rmSync(tmp,{recursive:true,force:true});}
+});

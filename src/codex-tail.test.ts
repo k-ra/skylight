@@ -96,3 +96,19 @@ test("excludes product sessions and internal helpers but retains delegated codin
   tailer.poll();
   assert.deepEqual(tailer.list().map(a=>a.id).sort(),["near","thread-1","worker"]);
 });
+
+test("discovers a moved task from explicit execution cwd, never from path mentions", () => {
+  const f = fixture();
+  writeFileSync(f.file, f.meta(join(f.root,'..','missing-old-folder')) + f.event('response_item', {type:'custom_tool_call',name:'exec',input:`await tools.exec_command({cmd:"ls",workdir:"${f.root}"});`}) + f.event('response_item',{type:'message',role:'assistant',content:[{text:'I am revising the authoring workflow.'}]}));
+  f.tailer.poll();
+  assert.equal(f.tailer.list().length,1);assert.equal(f.tailer.list()[0].lastTool,'exec_command');
+  assert.equal(f.tailer.list()[0].note,'I am revising the authoring workflow.');
+  writeFileSync(join(f.sessionsDir,'unrelated.jsonl'), f.event('session_meta',{id:'unrelated',cwd:join(f.root,'..','other-missing')}) + f.event('response_item',{type:'message',role:'user',content:[{text:`Please read ${f.root}`}]}) + f.event('event_msg',{type:'task_started'}));
+  f.advance(16000);f.tailer.poll();assert.equal(f.tailer.list().length,1);
+});
+
+test("reconsiders excluded tasks when new execution context arrives", () => {
+ const f=fixture();writeFileSync(f.file,f.meta(join(f.root,'..','old-missing')));f.tailer.poll();assert.equal(f.tailer.list().length,0);
+ appendFileSync(f.file,f.event('turn_context',{cwd:f.root}) + f.event('event_msg',{type:'task_started'}));
+ f.advance(16000);f.tailer.poll();assert.equal(f.tailer.list().length,1);
+});

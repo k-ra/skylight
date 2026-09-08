@@ -150,7 +150,7 @@ function load(data){
   }
   PROPOSALS = (sky.proposed||[]).map((p,i) => ({ ...p, seed:i*3.1+1 }));
   AGENTS = data.agents.map((g,i) => {
-    const where = g.lastFile ? AREA_OF[g.lastFile] : null;
+    const where = g.where || null;
     const areas = {}; for (const t of g.touched||[]) { const w = AREA_OF[t.file]; if (w) areas[w.area] = (areas[w.area]||0)+1; }
     return { ...g, where, areas, seed:i*2.3+.7, call: callsign(g.id) };
   });
@@ -784,10 +784,10 @@ function draw(now){
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.call}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</span><em>${esc(g.note||g.intent||"nothing said yet")}</em><small>${esc(activityDetail(g))}</small>
-             <div class="ch"><b>state</b><span>${esc(phaseText(g))}${g.where?" · at "+esc(g.where.area):" · nowhere yet"}</span>
+      : g ? `<span style="color:#ff6b3b">${g.call}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</span><em>${esc(g.intent||"Objective not captured")}</em>${g.note?`<small>${esc(g.note)}</small>`:""}<small>${esc(activityDetail(g))}</small>
+             <div class="ch"><b>state</b><span>${esc(phaseText(g))}${g.where?" · "+esc(g.where.area)+" ("+esc(g.where.basis)+")":" · objective not matched"}</span>
              <b>tools</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
-             <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
+             <b>file activity</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
              <b>last</b><span>${g.lastFile?esc(g.lastFile)+" · ":""}${ago(g.lastAt)}</span></div>`
       : `${esc(hover.area.name)}${hover.area.about?`<em>${esc(hover.area.about)}</em>`:""}<small>${RINGS[hover.area.ring]} · ${hover.area.items.length} tracked${hover.area.agents.length?` · ${hover.area.agents.length} agent${hover.area.agents.length>1?"s":""} here`:""} · click to open</small>`;
     tip.classList.add("on");
@@ -832,7 +832,7 @@ function disconnectActivity(){
 function renderActivity(){
   const active = AGENTS.filter(g=>g.state==="active"), uncertain = AGENTS.filter(g=>g.state==="unknown"), history = AGENTS.filter(g=>g.state==="idle");
   document.getElementById("activitybtn").textContent = activityConnected ? `Activity · ${active.length}` : "Activity · disconnected";
-  const row = g => `<div class="a ${g.state}${g.phase==="waiting"?" waiting":""}"><b>${esc(g.call)}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</b><p>${esc(g.note || g.intent || "nothing said yet")}</p><p>${esc(activityDetail(g))}</p><small>${esc(phaseText(g))} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
+  const row = g => `<div class="a ${g.state}${g.phase==="waiting"?" waiting":""}"><b>${esc(g.call)}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</b><p>${esc(g.intent || "Objective not captured")}</p>${g.note?`<p>${esc(g.note)}</p>`:""}<small>${g.where?esc(g.where.area)+" · "+esc(g.where.basis):"Objective not matched"}</small><p>${esc(activityDetail(g))}</p><small>${esc(phaseText(g))} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
   const expanded = crew.querySelector("details")?.open;
   crew.innerHTML = `${activityConnected ? "" : "<p>Disconnected — activity is not current.</p>"}<h4>Coding activity</h4>${active.map(row).join("") || "<p>No coding session currently working.</p>"}${uncertain.length?`<h4>Status unknown</h4>${uncertain.map(row).join("")}`:""}<details ${expanded?"open":""}><summary>Recent history · ${history.length}</summary>${history.map(row).join("") || "<p>No recent completed sessions.</p>"}</details>`;
 }
