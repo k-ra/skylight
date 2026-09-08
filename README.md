@@ -121,6 +121,38 @@ curl -X POST http://127.0.0.1:4340/api/presence \
 Claude Code sessions get their phase from their transcripts without reporting
 anything: a turn that ends in words and no tool call is a ship waiting for you. Set `SKY_MODEL_PROVIDER=codex` to use Codex for planning, or `claude` (the default) for Claude Code.
 
+## Sending a ship
+
+In a constellation, click a to-do, a question, or an exploration and choose
+**send a ship**. Skylight makes a git worktree on a branch named after the
+star, runs Claude Code there in print mode with the star as its task, and
+draws the ship circling the star while it works — what it is saying, what it
+is touching. When it is done it leaves a postcard on the star:
+
+```
+did: …        doubted: …        untouched: …
+```
+
+and the star waits in HQ under **accept · revise**. Accept merges the branch
+and moves the star to `done` with `landed` and `proof: merged sky/…`. Revise
+sends the same ship back with your note, resuming its session on the same
+branch. Recall stops it. Nothing is merged, and nothing is marked done, unless
+you say so. The record lives on the star:
+
+```yaml
+todo:
+  - text: Placeholder tests
+    run: { id: ship-…, branch: sky/render-placeholder-tests-3f2a, status: done,
+           when: …, ended: …, said: "did: …", files: 2, session: …, by: person }
+```
+
+Ships may edit files and run `git add/commit/status/diff/log`, `npm test`,
+`npm run`, `npx`, `node`, `ls`, `cat`, `grep`. Set `SKY_SHIP_TOOLS` to a
+comma-separated list of Claude Code tool patterns to change that. Worktrees
+live under `~/.skylight/worktrees/`; a project that is not a git repository
+cannot send ships. If Skylight restarts while a ship is out, the run is marked
+failed rather than left looking alive.
+
 ## The gesture
 
 Click a system to open it. Click an area for its constellation. Double-click

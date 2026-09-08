@@ -35,6 +35,8 @@ export type Agent = {
   note?: string | null; noteAt?: number;
   /** a stable task identity, when whoever runs it has one */
   task?: string | null;
+  /** the star it was sent to, when a person dispatched it from the sky */
+  star?: string;
 };
 
 const ACTIVE_MS = 10 * 60_000, GONE_MS = 24 * 3600_000;

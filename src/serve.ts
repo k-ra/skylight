@@ -14,6 +14,7 @@ import { orchestrate } from "./orchestrate.ts";
 import { gate, shareToken } from "./access.ts";
 import { Tailer, type Agent } from "./tail.ts";
 import { CodexTailer } from "./codex-tail.ts";
+import { Dispatcher } from "./dispatch.ts";
 import { modelProvider } from "./model.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -60,14 +61,17 @@ const allAgents = (): Agent[] => {
   const now = Date.now();
   for (const a of reported.values()) a.state = now - a.lastAt < 10 * 60_000 ? (a.state === "idle" ? "idle" : "active") : now - a.lastAt < 24 * 3600_000 ? "idle" : "gone";
   for (const [id, a] of reported) if (a.state === "gone") reported.delete(id);
-  const seen = new Set(reported.keys());
-  return [...reported.values(), ...[...(tailer?.list() ?? []), ...(codexTailer?.list() ?? [])].filter((a) => !seen.has(a.id))].sort((x, y) => y.lastAt - x.lastAt);
+  const ships = dispatcher.agents(), seen = new Set([...ships.map((a) => a.id), ...reported.keys()]);
+  return [...ships, ...reported.values(), ...[...(tailer?.list() ?? []), ...(codexTailer?.list() ?? [])].filter((a) => !seen.has(a.id))].sort((x, y) => y.lastAt - x.lastAt);
 };
 const sources = (process.env.SKY_AGENT_SOURCES ?? "claude,codex").split(",").map(s => s.trim());
 const changed = () => { agents = allAgents(); push(); };
 const tailer = sources.includes("claude") ? new Tailer(ROOT, changed) : null;
 const codexTailer = sources.includes("codex") ? new CodexTailer(ROOT, changed, { worktrees: sky.worktrees.map(w => w.path), excludePaths: sky.activity?.excludePaths }) : null;
 const pollAgents = () => { tailer?.poll(); codexTailer?.poll(); agents = allAgents(); };
+/* ships a person sends from a star. their record is on the star; their presence comes from their own stream */
+const dispatcher = new Dispatcher(ROOT, { onChange: () => { try { sky = readSky(ROOT); } catch {} agents = allAgents(); push(); } });
+dispatcher.sweep();
 
 const exportAt = process.argv.indexOf("--export");
 if (exportAt > 0) {
@@ -259,6 +263,18 @@ const server = createServer(async (req, res) => {
         const err = url === "/api/light" ? light(String(b.area)) : answer(String(b.area), String(b.question), String(b.text ?? "").trim());
         if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
         sky = readSky(ROOT); push();
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
+    }); return;
+  }
+  if ((url === "/api/dispatch" || url === "/api/recall" || url === "/api/accept") && req.method === "POST") {
+    let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
+      try {
+        const b = JSON.parse(body), area = String(b.area ?? ""), text = String(b.text ?? "").trim();
+        const err = url === "/api/dispatch" ? dispatcher.send(area, text, String(b.note ?? "").trim()).error ?? null
+          : url === "/api/recall" ? dispatcher.recall(area, text) : dispatcher.accept(area, text);
+        if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
+        sky = readSky(ROOT); agents = allAgents(); push();
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
       } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
     }); return;
