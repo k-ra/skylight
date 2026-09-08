@@ -24,8 +24,13 @@ loose stars capture ideas. The map should help a person decide what to do next.
 - Asynchronous planning with protection against overwriting concurrent manifest
   edits, plus local viewing, snapshot export and optional sharing.
 
-The shipped orchestrator annotates and proposes. It does not dispatch coding
-workers or supervise implementation through completion.
+Since this audit, dispatch, recall, revision, human acceptance and returned test
+evidence have landed. Task placement now uses explicit assignment or conservative
+objective matching, and activity shows the objective separately from recent
+messages and tools. Moved Codex tasks can be rediscovered from execution context.
+These are implemented building blocks; a complete real-user workflow still needs
+validation. Dispatch currently uses Claude Code; a Codex dispatch adapter remains
+open. The checklist below records the intended experience, not wholly absent code.
 
 ## Next: finish one complete work loop
 
@@ -76,7 +81,9 @@ progress → inspect the result → accept or request revision.
 
 Existing automated tests cover selected adapter, planning, manifest and server
 behaviors. They do not establish visual quality or validate the complete loop.
-This documentation update does not add runtime behavior.
+The objective-placement update adds regression coverage for stable placement,
+ambiguous objectives, prompt steering, moved tasks and task discovery before file
+activity. Visual and real-user acceptance remain open.
 
 ## Suggested next milestone
 

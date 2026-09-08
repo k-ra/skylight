@@ -193,7 +193,7 @@ The project needs a `sky.yaml`. Choose systems around product capabilities or th
 user journey, then assign concrete files and tests to each area. Put specific
 features inside those systems; multiple implementations may contribute to one
 feature. Optional `activity` globs associate generated artifacts or reference images
-with an area without counting them as implementation or tests. The first matching area owns a file's ship placement. Monorepo folders
+with an area without counting them as implementation or tests. File mappings provide evidence; they do not determine a ship's task assignment. Monorepo folders
 such as `apps/`, `packages/`, and `skills/` are watched automatically when mapped.
 
 Activity and planning are independent:
@@ -202,7 +202,7 @@ Activity and planning are independent:
   `~/.codex/sessions`) appear automatically when their working directory belongs
   to the project or one of its linked Git worktrees. Desktop and CLI sessions
   using this local format are supported. Completed turns go idle; stale activity
-  goes idle after ten minutes and disappears after a day. Ships identify their
+  becomes unknown after ten minutes and disappears after a day. Ships identify their
   provider. Session files are read locally; raw tool output is not served.
 - **Planning:** Gather and the background annotator invoke `codex exec` with the
   existing CLI login, configured default model, an ephemeral session, and a
@@ -240,3 +240,25 @@ npm test
 
 Tests use disposable session files and fake model executables; they do not make
 model calls or read your personal transcripts.
+
+## Task placement and current activity
+
+Skylight associates ships with objectives, not the last file they touched.
+Dispatched ships retain their assigned area. Presence reports can include `area`
+for an explicit assignment. Otherwise Skylight conservatively matches the detected
+user objective against area names and descriptions; the display labels the match
+`inferred`. Ambiguous matches remain unassigned. No model call or manifest rewrite
+is required for placement. Editing an unrelated file does not move the ship.
+
+The activity panel and hover show the objective separately from the most recent
+assistant message and tool activity. Short acknowledgements retain the previous
+objective. This is bounded transcript observation, not a semantic understanding of
+the entire conversation. Legacy `activity.labels` no longer overrides detected
+objectives. Objectives and assistant messages are included in the sky payload;
+consider this when deliberately sharing or exporting a sky.
+
+Codex tasks with a missing original project folder can be rediscovered from
+explicit recent working-directory evidence in their bounded transcript tail.
+A similar folder name or a path mentioned in a user message is insufficient.
+Unrelated projects and configured product-session exclusions remain excluded.
+Parent task IDs are retained when supplied by Codex's session metadata.
