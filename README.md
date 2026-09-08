@@ -1,5 +1,7 @@
 # Skylight
 
+Current prototype status and remaining work: [WORK_IN_PROGRESS.md](WORK_IN_PROGRESS.md).
+
 A project, drawn as a sky. The galaxy is the full view; a star system is a major part of the product; a constellation is one feature.
 
 Three north stars — the parts of your project — with their areas orbiting
