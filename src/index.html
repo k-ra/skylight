@@ -9,9 +9,6 @@
   html,body { height:100%; }
   body { margin:0; background:var(--void); color:var(--ink); overflow:hidden; font-family:"IBM Plex Mono",ui-monospace,monospace; }
   canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; cursor:none; }
-  .project-label { position:fixed; top:20px; left:24px; z-index:7; pointer-events:none; }
-  .project-label h1 { margin:0; font:500 12px "IBM Plex Mono",monospace; letter-spacing:.15em; text-transform:uppercase; }
-  .project-label p { margin:7px 0 0; max-width:calc(100vw - 48px); color:var(--dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bar { position:fixed; bottom:0; left:0; right:0; z-index:8; display:flex; align-items:center; gap:14px; padding:15px 22px;
          font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); pointer-events:none; }
   .bar b { color:var(--ink); font-weight:500; }
@@ -20,6 +17,7 @@
   .panel.crew { right:auto; top:auto; left:22px; bottom:118px; width:min(400px, calc(100vw - 44px)); }
   .crew .a { display:grid; gap:3px; padding:8px 0 8px 12px; border-left:1px solid rgba(226,234,244,.12); margin-bottom:6px; }
   .crew .a.active { border-left-color:var(--agent); }
+  .crew .a.waiting { border-left-color:#8fb4ff; }
   .crew .a b { color:var(--ink); font-weight:500; text-transform:uppercase; letter-spacing:.1em; font-size:10px; }
   .crew .a b i { color:var(--agent); font-style:normal; }
   .crew .a em { color:var(--dim); font-style:normal; font-size:11.5px; letter-spacing:0; line-height:1.45; }
@@ -81,7 +79,6 @@
 </style>
 
 <canvas id="c"></canvas>
-<header class="project-label"><h1 id="projectName">Skylight</h1><p id="projectGoal"></p></header>
 <div class="bar">
   <span class="mark" id="mark" title=""><svg viewBox="0 0 20 20"><path d="M10 1.5 L11.9 8.1 L18.5 10 L11.9 11.9 L10 18.5 L8.1 11.9 L1.5 10 L8.1 8.1 Z"/></svg></span>
   <span class="live off" id="livedot"><i></i><span id="livetext">snapshot</span></span>
@@ -129,8 +126,6 @@ function load(data){
   activityConnected = true;
   const sky = data.sky; ROOT = data.root || ""; FILE = data.file || "sky.yaml"; GOAL = sky.goal || ""; NAME = sky.name || "sky";
   document.title = `${NAME} · Skylight`;
-  document.getElementById("projectName").textContent = NAME;
-  document.getElementById("projectGoal").textContent = GOAL;
   mark.title = `${sky.name} · ${sky.goal||""}`;
   AREA_OF = {};
   SYSTEMS = sky.stars.map((s,i) => ({
@@ -152,7 +147,7 @@ function load(data){
   AGENTS = data.agents.map((g,i) => {
     const where = g.lastFile ? AREA_OF[g.lastFile] : null;
     const areas = {}; for (const t of g.touched||[]) { const w = AREA_OF[t.file]; if (w) areas[w.area] = (areas[w.area]||0)+1; }
-    return { ...g, where, areas, seed:i*2.3+.7, call: `${g.provider || "coding"} · ${g.short || g.id.slice(0,8)}` };
+    return { ...g, where, areas, seed:i*2.3+.7, call: callsign(g.id) };
   });
   renderActivity();
   for (const s of SYSTEMS) for (const a of s.areas) a.agents = AGENTS.filter(g => g.state==="active" && g.where && g.where.sys===s.name && g.where.area===a.name);
@@ -160,14 +155,16 @@ function load(data){
   const snap = { ring:{}, done:{}, agent:{}, proposals:PROPOSALS.length, pending:0 };
   for (const s of SYSTEMS) for (const a of s.areas) for (const it of a.items) if (it.kind==="open" && it.proposes && it.proposes.length) snap.pending++;
   for (const s of SYSTEMS) for (const a of s.areas){ snap.ring[s.name+"/"+a.name]=a.ring; snap.done[s.name+"/"+a.name]=a.items.filter(i=>i.kind==="done").length; }
-  for (const g of AGENTS) snap.agent[g.id] = { state:g.state, where:g.where?g.where.area:null, file:g.lastFile };
+  for (const g of AGENTS) snap.agent[g.id] = { state:g.state, phase:g.phase, where:g.where?g.where.area:null, file:g.lastFile };
   if (prevSnap){
     for (const k in snap.ring){ const [sn,an]=k.split("/"); const was=prevSnap.ring[k], now=snap.ring[k];
       if (was!==undefined && now>was) news.push({ text:`${an} · ${RINGS[now]}`, sys:sn, area:an, kind: now===4?"live":"lit" });
       if (prevSnap.done[k]!==undefined && snap.done[k]>prevSnap.done[k]) news.push({ text:`${an} · something landed`, sys:sn, area:an, kind:"landed" }); }
     for (const id in snap.agent){ const w=prevSnap.agent[id], n=snap.agent[id]; if (!w) continue;
       if (w.where!==n.where && n.where) news.push({ text:`${callsign(id)} → ${n.where}`, sys:null, area:n.where, kind:"agent" });
-      if (w.state!=="idle" && n.state==="idle") news.push({ text:`${callsign(id)} came home`, kind:"agent" }); }
+      if (w.state!=="idle" && n.state==="idle") news.push({ text:`${callsign(id)} came home`, kind:"agent" });
+      if (w.phase!=="waiting" && n.phase==="waiting") news.push({ text:`${callsign(id)} is waiting on you`, sys:null, area:n.where, kind:"agent" });
+      if (w.phase!=="failed" && n.phase==="failed") news.push({ text:`${callsign(id)} failed`, sys:null, area:n.where, kind:"agent" }); }
     if (snap.proposals > prevSnap.proposals) news.push({ text:`${snap.proposals-prevSnap.proposals} proposed`, kind:"proposal" });
     if (snap.pending > prevSnap.pending){ const d = snap.pending-prevSnap.pending; news.push({ text:`${d} answer${d===1?"":"s"} read · accept or reject`, kind:"proposal" }); }
   }
@@ -189,7 +186,7 @@ const key = document.getElementById("key"), plant = document.getElementById("pla
 let planting = null;   // { kind, area, x, y } while an input sits on the sky
 let W=0,H=0,DPR=1, nodes=[], hover=null, mouse=null, t0=performance.now(), dust=[], meteors=[];
 let level = { kind:"all", sys:null, area:null }, prev = null, fade = 1, opened = null;
-let motion = 0, lastNow = 0;     // the clock everything moves by — it stops while you are reading something
+let motion = 0, lastNow = 0, frameStep = 1;     // the clock everything moves by — it stops while you are reading something; frameStep scales per-frame motion when frames are rare
 let prevSnap = null, news = [], sparks = [], trail = [], dawn = 0, dawnFlash = 0, waiting = 0, lastNews = 0, lastAmbient = 0, lastTurn = "", recent = new Map();
 /* what waits on a person: proposals, questions, answers whose consequences the
    orchestrator has proposed, and stars that are done but not yet lit */
@@ -204,6 +201,10 @@ function queue(){
       : { kind:"question", text:it.text, more:it.more, area:a, action:"answer" });
     if (a.ring===3) q.push({ kind:"light", text:a.name, more:"tests mapped — verified and live?", area:a, action:"light it" });
   }
+  // a ship whose turn ended with a question is waiting on you too — that is the same
+  // thing as being stuck. two hours, then it is assumed abandoned rather than waiting.
+  for (const g of AGENTS) if (g.phase==="waiting" && g.state!=="gone" && Date.now()-(g.noteAt||g.lastAt) < 2*3600e3)
+    q.push({ kind:"ship", text:g.note||"waiting for you", more:g.where?`at ${g.where.area}`:"", agent:g, area:g.where?SYSTEMS.flatMap(s=>s.areas).find(a=>a.name===g.where.area):null, action:"waiting for you" });
   return q;
 }
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -221,6 +222,7 @@ const KEYS = {
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.4" fill="none" stroke="#48525f" stroke-dasharray="1.5 1.5"/></svg>planned, not started</span>
         <span>rings · planned → started → built → tests mapped → live · closer in is more done</span>`,
   hq: `<span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#ff6b3b" stroke-width="1.3"/></svg>a proposal — accept or veto</span>
+        <span><svg viewBox="0 0 24 12"><path d="M16 6 L8 10 L10.5 6 L8 2 Z" fill="none" stroke="#ff6b3b" stroke-width="1"/></svg>a ship that asked you something — answer it in its terminal</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#7ddc9a" stroke-width="1.3"/></svg>you answered, and the orchestrator read it — accept or reject what it changes</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>a question only you can answer</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tests mapped, not verified — review before marking live</span>
@@ -272,9 +274,9 @@ function drawDust(time){
   // meteors: some are just weather; the ones with words are news and activity
   if (!REDUCED && Math.random() < .003 && meteors.length < 3) meteors.push({ x:Math.random()*W, y:Math.random()*H*.5, vx:6+Math.random()*5, vy:3+Math.random()*3, life:1, decay:.022 });
   if (!REDUCED && news.length && time-lastNews > 1800 && meteors.filter(m=>m.text).length < 2){ const n = news.shift(); meteor(n.text, n.kind); lastNews = time; burstAt(n); }
-  if (!REDUCED && !news.length && time-lastAmbient > 14000){ lastAmbient = time;   // feet in the water: what is happening right now
+  if (!REDUCED && !news.length && time-lastAmbient > 14000 && !meteors.some(m=>m.kind==="activity")){ lastAmbient = time;   // feet in the water: what is happening right now — one at a time
     const g = AGENTS.find(a => a.state==="active" && a.lastFile); if (g) meteor(`${g.call} · ${(g.lastTool||"").replace(/^mcp__\w+__/,"").toLowerCase()} · ${g.lastFile.split("/").pop()}`, "activity"); }
-  for (const m of meteors){ m.x+=m.vx; m.y+=m.vy; m.life-=m.decay;
+  for (const m of meteors){ m.x+=m.vx*frameStep; m.y+=m.vy*frameStep; m.life-=m.decay*frameStep;
     const L = m.text ? 22 : 10, warm = m.kind==="live"||m.kind==="landed";
     const rgb = warm ? "255,150,90" : m.kind==="agent"||m.kind==="activity" ? "255,107,59" : "255,255,255";
     const g=ctx.createLinearGradient(m.x-m.vx*L,m.y-m.vy*L,m.x,m.y); g.addColorStop(0,`rgba(${rgb},0)`); g.addColorStop(1,`rgba(${rgb},${.75*m.life})`);
@@ -315,6 +317,8 @@ function drawCursor(time){
   for (let i=0;i<4;i++){ const a=i*Math.PI/2; ctx.beginPath(); ctx.moveTo(Math.cos(a)*3,Math.sin(a)*3); ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r); ctx.stroke(); }
   ctx.restore(); core(x,y,1.2, over ? "#ff6b3b" : "#fff");
 }
+/* the hold light: a ship that has stopped to ask blinks blue, the colour of a question */
+function holdLight(x,y,time){ if (REDUCED || Math.sin(time*.005)>0){ bloom(x,y,9,"143,180,255",.55); core(x,y,1.5,"#8fb4ff"); } }
 /* a ship: hairline wireframe, nose along its heading */
 function ship(x,y,heading,size,color,alpha){
   ctx.save(); ctx.translate(x,y); ctx.rotate(heading); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.lineWidth=1;
@@ -343,17 +347,17 @@ function drawSystem(s, cx, cy, R, detailed, time, alpha, clickable){
   let starDrawn = false;
   for (const b of bodies){
     if (!starDrawn && b.d > .5){ star(); starDrawn = true; }
-    const a=b.a, here=a.agents.length>0, planned=a.ring===0, depth=.6+.4*b.d;
-    if (here && level.kind!=="area" && !REDUCED && !(hover && !hover.sys)) a.ang += .0007;
+    const a=b.a, here=a.agents.length>0, planned=a.ring===0, depth=.6+.4*b.d, holding=here && a.agents.every(g=>g.phase==="waiting");
+    if (here && !holding && level.kind!=="area" && !REDUCED && !(hover && !hover.sys)) a.ang += .0007;
     ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(b.x,b.y);
     ctx.strokeStyle = here?`rgba(255,107,59,${.7*depth})`:planned?"rgba(226,234,244,.07)":`rgba(226,234,244,${(detailed?.26:.16)*depth})`; ctx.lineWidth=here?1.4:1; ctx.stroke();
     if (planned){ ctx.beginPath(); ctx.arc(b.x,b.y,2.4,0,TAU); ctx.strokeStyle="rgba(226,234,244,.3)"; ctx.lineWidth=1; ctx.setLineDash([1.5,1.5]); ctx.stroke(); ctx.setLineDash([]); }
     else if (here){
       const heading = Math.atan2(Math.cos(b.ang)*TILT, -Math.sin(b.ang)); // tangent to the ellipse
       ctx.save(); ctx.globalCompositeOperation="lighter";
-      for (let k=1;k<=12;k++){ const [tx,ty]=proj(cx,cy,R*RR[a.ring],a.ang-k*.045,time); ctx.beginPath(); ctx.arc(tx,ty,2.6*(1-k/12),0,TAU); ctx.fillStyle=`rgba(255,107,59,${.45*(1-k/12)})`; ctx.fill(); }
+      if (!holding) for (let k=1;k<=12;k++){ const [tx,ty]=proj(cx,cy,R*RR[a.ring],a.ang-k*.045,time); ctx.beginPath(); ctx.arc(tx,ty,2.6*(1-k/12),0,TAU); ctx.fillStyle=`rgba(255,107,59,${.45*(1-k/12)})`; ctx.fill(); }
       ctx.restore();
-      bloom(b.x,b.y,detailed?34:22,"255,107,59",.6); ship(b.x,b.y,heading,detailed?9:6,"#ff6b3b",1);
+      bloom(b.x,b.y,detailed?34:22,"255,107,59",holding?.35:.6); ship(b.x,b.y,heading,detailed?9:6,"#ff6b3b",1); if (holding) holdLight(b.x,b.y-(detailed?12:9),time);
       a.agents.forEach((g,i) => nodes.push({ x:b.x, y:b.y, r:16, agent:g }));
     }
     else { bloom(b.x,b.y,(12+a.ring*3)*depth,"255,255,255",(.08+a.ring*.07)*depth); core(b.x,b.y,((detailed?2.4:1.8)+a.ring*.25)*depth,`rgba(255,255,255,${.6+.4*b.d})`); }
@@ -362,7 +366,7 @@ function drawSystem(s, cx, cy, R, detailed, time, alpha, clickable){
       const out = Math.cos(b.ang) < 0;
       ctx.font=font(10.5,here?500:400); ctx.textAlign=out?"right":"left";
       ctx.fillStyle = here?"#ff6b3b":planned?"rgba(72,82,95,.95)":`rgba(226,234,244,${.45+.45*b.d})`;
-      ctx.fillText((a.name+(here?` · ${a.agents.length>1?a.agents.length+" agents":"agent"}`:"")).toUpperCase(), b.x+(out?-11:11), b.y+3.5);
+      ctx.fillText((a.name+(here?` · ${holding?"waiting":a.agents.length>1?a.agents.length+" agents":"agent"}`:"")).toUpperCase(), b.x+(out?-11:11), b.y+3.5);
       if (alpha>.5 && !here) nodes.push({ x:b.x,y:b.y,r:16,area:a });
       else if (alpha>.5) nodes.push({ x:b.x,y:b.y,r:26,area:a });
     }
@@ -400,7 +404,7 @@ function drawSun(time, alpha){
   const idle = AGENTS.filter(g => g.state==="active" && !g.where);
   idle.forEach((g,i) => { const outer = i%2===1, rr = outer ? R*1.6 : R, ang = (i/Math.max(1,idle.length))*TAU + time*(outer?-.00009:.00013) + g.seed;
     const x = cx+Math.cos(ang)*rr, y = cy+Math.sin(ang)*rr*(outer?TILT*.8:TILT), d = (Math.sin(ang)+1)/2;
-    ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
+    ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (g.phase==="waiting") holdLight(x,y-8,time); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
   if (level.kind !== "hq"){
     if (q){ ctx.textAlign="center"; ctx.font=font(11,500); ctx.fillStyle="rgba(255,170,120,.95)"; ctx.fillText(String(q), cx, cy-R*TILT-16); }
     if (lastTurn){ ctx.textAlign="center"; ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.55)"; ctx.fillText(lastTurn.toUpperCase(), cx, cy-R*TILT-30); }
@@ -460,11 +464,11 @@ function drawDesk(time, alpha){
     const col = it.kind==="question" ? "#8fb4ff" : it.kind==="reconcile" ? "#7ddc9a" : it.kind==="light" ? "#fff" : "#ff6b3b", rgb = it.kind==="question" ? "143,180,255" : it.kind==="reconcile" ? "125,220,154" : it.kind==="light" ? "255,255,255" : "255,107,59";
     const hot = hover && hover.desk===it;
     bloom(x,y,hot?28:18,rgb,hot?.6:.35);
-    if (it.kind==="light") core(x,y,3.2,col); else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
+    if (it.kind==="light") core(x,y,3.2,col); else if (it.kind==="ship"){ ship(x,y,-Math.PI/2,5.5,col,1); holdLight(x,y-11,time); } else { ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle=col; ctx.lineWidth=1.3; ctx.stroke(); }
     // the words, outside the hull, reading as a list
     ctx.textAlign = left ? "right" : "left";
     const tx = x + nx*16, ty = y;
-    const sub = it.action.toUpperCase() + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
+    const sub = it.action.toUpperCase() + (it.agent?"  ·  "+it.agent.call.toUpperCase():"") + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
     ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>48?it.text.slice(0,46)+"…":it.text, tx, ty-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
     const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = left ? tx-w : tx;
@@ -477,13 +481,15 @@ function showDeskItem(it, x, y){
   const b = (id, label, warm) => `<button id="${id}"${warm?' class="warm"':''}>${label}</button>`;
   const acts = it.kind==="proposal" ? b("acc","accept") + b("veto","veto",true)
     : it.kind==="reconcile" ? b("rec","accept") + b("rej","reject",true)
-    : it.kind==="question" ? b("answer","answer") : b("light","light it");
+    : it.kind==="question" ? b("answer","answer") : it.kind==="ship" ? b("ok","ok") : b("light","light it");
   const props = it.kind==="reconcile" ? (it.item.proposes||[]) : [];
   const ctx1 = it.kind==="proposal" ? `${it.p.ideas.length} idea${it.p.ideas.length===1?"":"s"} · under ${esc(it.p.star)} — ${esc(it.more)}`
     : it.kind==="reconcile" ? `<b style="color:#7ddc9a">you said</b> ${esc(it.more||"")}`
         + (it.item.addresses_question===false && it.item.restates ? `<br><b style="color:#ffb08a">answers instead</b> ${esc(it.item.restates)}` : "")
         + props.map(p=>`<br><b style="color:#7ddc9a">${esc(p.kind)}</b> ${esc(p.text)}`).join("")
-    : it.kind==="question" ? esc(it.more||`in ${it.area.name}`) : `tests mapped · ${esc(it.area.about||"")}`;
+    : it.kind==="question" ? esc(it.more||`in ${it.area.name}`)
+    : it.kind==="ship" ? `<b style="color:#ff9b70">${esc(it.agent.call)}</b> stopped to ask${it.more?" "+esc(it.more):""} · ${esc(agoText(it.agent.noteAt||it.agent.lastAt))}<br>answer it in its own terminal — skylight cannot reply for you`
+    : `tests mapped · ${esc(it.area.about||"")}`;
   decideEl.className = "panel answer";
   decideEl.innerHTML = `<div class="row"><b title="${esc(it.text)}">${esc(it.text)}</b><span class="acts">${acts}</span></div><p class="ctx">${ctx1}</p>` +
     (it.kind==="question" ? `<input id="ans" placeholder="the answer" autocomplete="off" spellcheck="false">` : "") + `<p class="note" id="decnote"></p>`;
@@ -497,6 +503,7 @@ function showDeskItem(it, x, y){
     const r = await fetch(url, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(body) });
     if (r.ok){ decideEl.hidden = true; leader = null; } else document.getElementById("decnote").textContent = (await r.json().catch(()=>({}))).error || "could not do that"; };
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("click", fn); };
+  on("ok", () => { decideEl.hidden = true; leader = null; });
   on("acc", () => post("/api/proposal", { name: it.p.name, action:"accept" }));
   on("veto", () => post("/api/proposal", { name: it.p.name, action:"veto" }));
   on("light", () => post("/api/light", { area: it.area.name }));
@@ -596,7 +603,8 @@ function drawTracker(time, alpha){
     if (p.kind==="alpha"){
       const breath = REDUCED ? 1 : 1 + .07*Math.sin(time*(here?.004:.0014));
       bloom(x,y,96*breath,here?"255,107,59":"255,255,255",here?.55:.42); flare(x,y,150*breath,here?"255,150,110":"255,255,255",.5); core(x,y,4.4,here?"#ff6b3b":"#fff");
-      if (here){ const ang = time*.0012, hx = x+Math.cos(ang)*34, hy = y+Math.sin(ang)*34*TILT; ship(hx,hy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),8,"#ff6b3b",1); a.agents.forEach(g => nodes.push({ x:hx,y:hy,r:14,agent:g })); }
+      if (here){ const holding = a.agents.every(g=>g.phase==="waiting"), ang = holding ? -Math.PI/2 : time*.0012, hx = x+Math.cos(ang)*34, hy = y+Math.sin(ang)*34*TILT;
+        ship(hx,hy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),8,"#ff6b3b",1); if (holding) holdLight(hx,hy-12,time); a.agents.forEach(g => nodes.push({ x:hx,y:hy,r:14,agent:g })); }
       ctx.textAlign="center"; ctx.font=font(15,500); ctx.fillStyle=here?"#ff6b3b":"#fff"; ctx.fillText(a.name.toUpperCase(), x, y+44);
       ctx.font=font(9.5); ctx.fillStyle="rgba(135,146,161,.85)"; ctx.fillText(RINGS[a.ring].toUpperCase(), x, y+60);
       if (alpha>.5) nodes.push({ x,y,r:20, about:a });
@@ -638,6 +646,7 @@ function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); el
 function draw(now){
   const time=now-t0; fade += (1-fade)*(REDUCED?1:.12);
   const frozen = !!hover && !hover.sys;          // reading a body, a star, a ship: hold still
+  frameStep = lastNow ? Math.min(3, Math.max(.25, (now - lastNow) / 16.7)) : 1;   // a hidden tab draws rarely; things move by time, not by frame
   if (!frozen && lastNow) motion += Math.min(50, now - lastNow); lastNow = now;
   ctx.clearRect(0,0,W,H); drawDawn(time); drawDust(time); nodes=[];
   if (prev && fade<.995) drawLevel(prev, motion, 1-fade);
@@ -666,8 +675,8 @@ function draw(now){
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.call} · ${esc(g.provider || "agent")}${g.subagent?" · delegated":""}</span><em>${esc(g.intent||"Coding task not labeled")}</em><small>${esc(activityDetail(g))}</small>
-             <div class="ch"><b>state</b><span>${g.state}${g.where?" · at "+esc(g.where.area):" · area not identified"}</span>
+      : g ? `<span style="color:#ff6b3b">${g.call}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</span><em>${esc(g.note||g.intent||"nothing said yet")}</em><small>${esc(activityDetail(g))}</small>
+             <div class="ch"><b>state</b><span>${esc(phaseText(g))}${g.where?" · at "+esc(g.where.area):" · nowhere yet"}</span>
              <b>tools</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
              <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
              <b>last</b><span>${g.lastFile?esc(g.lastFile)+" · ":""}${ago(g.lastAt)}</span></div>`
@@ -682,11 +691,14 @@ function draw(now){
   drawLeader(); drawSparks(); if (!REDUCED) drawCursor(time);
   if (!REDUCED) requestAnimationFrame(draw);
 }
+const agoText = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
+/* one line, current and timestamped: what it said, when; where it last was */
 function activityDetail(g){
-  const clock = t => new Date(t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-  const file = (g.touched || []).filter(t => t.file === g.lastFile).at(-1);
-  return [g.lastTool ? `Last observed tool: ${g.lastTool}` : "No tool activity captured",
-    file ? `Last file: ${file.file} (${clock(file.at)})` : "No project file identified"].join(" · ");
+  return [g.noteAt ? `said ${agoText(g.noteAt)}` : null, g.lastTool ? g.lastTool.replace(/^mcp__\w+__/,"").toLowerCase() : null, g.lastFile ? g.lastFile.split("/").pop() : null, g.task ? `task ${g.task}` : null].filter(Boolean).join(" · ") || "nothing observed yet";
+}
+/* the five phases a ship can be in, said plainly */
+function phaseText(g){
+  return g.state==="unknown" ? "unknown — no recent event" : g.phase==="waiting" ? "waiting for you" : g.phase==="failed" ? "failed" : g.phase==="done" ? "done" : g.state==="active" ? "working" : g.state==="idle" ? "turn ended" : g.state;
 }
 function disconnectActivity(){
   activityConnected = false;
@@ -699,7 +711,7 @@ function disconnectActivity(){
 function renderActivity(){
   const active = AGENTS.filter(g=>g.state==="active"), uncertain = AGENTS.filter(g=>g.state==="unknown"), history = AGENTS.filter(g=>g.state==="idle");
   document.getElementById("activitybtn").textContent = activityConnected ? `Activity · ${active.length}` : "Activity · disconnected";
-  const row = g => `<div class="a ${g.state}"><b>${esc(g.call)}${g.subagent?" · delegated":""}</b><p>${esc(g.intent || "Coding task not labeled")}</p><p>${esc(activityDetail(g))}</p><small>${g.state==="unknown"?"Status unknown · no recent event":g.state==="active"?"Working":"Turn ended"} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
+  const row = g => `<div class="a ${g.state}${g.phase==="waiting"?" waiting":""}"><b>${esc(g.call)}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</b><p>${esc(g.note || g.intent || "nothing said yet")}</p><p>${esc(activityDetail(g))}</p><small>${esc(phaseText(g))} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
   const expanded = crew.querySelector("details")?.open;
   crew.innerHTML = `${activityConnected ? "" : "<p>Disconnected — activity is not current.</p>"}<h4>Coding activity</h4>${active.map(row).join("") || "<p>No coding session currently working.</p>"}${uncertain.length?`<h4>Status unknown</h4>${uncertain.map(row).join("")}`:""}<details ${expanded?"open":""}><summary>Recent history · ${history.length}</summary>${history.map(row).join("") || "<p>No recent completed sessions.</p>"}</details>`;
 }

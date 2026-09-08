@@ -28,6 +28,13 @@ export type Agent = {
   tools: Record<string, number>;
   /** active: touched something in the last 10 minutes */
   state: "active" | "idle" | "unknown" | "gone";
+  /** what the last record says it is doing. `waiting` means its turn ended with
+   *  words and no tool call — it is waiting for the person. */
+  phase?: "working" | "waiting" | "done" | "failed";
+  /** the last thing it said, and when — a current description, not a saved label */
+  note?: string | null; noteAt?: number;
+  /** a stable task identity, when whoever runs it has one */
+  task?: string | null;
 };
 
 const ACTIVE_MS = 10 * 60_000, GONE_MS = 24 * 3600_000;
@@ -36,10 +43,10 @@ export class Tailer {
   private offsets = new Map<string, number>();
   private agents = new Map<string, Agent>();
   private carry = new Map<string, string>();
-  constructor(private root: string, private onChange: () => void) {}
+  constructor(private root: string, private onChange: () => void, private dir = join(homedir(), ".claude", "projects")) {}
 
   private files(): string[] {
-    const dir = join(homedir(), ".claude", "projects");
+    const dir = this.dir;
     if (!existsSync(dir)) return [];
     const out: string[] = [];
     for (const d of readdirSync(dir)) {
@@ -93,7 +100,7 @@ export class Tailer {
     if (!j.sessionId || !j.timestamp) return false;
     const at = Date.parse(j.timestamp); if (!Number.isFinite(at)) return false;
     const content = j.message?.content;
-    let touched = false;
+    let touched = false, changed = false;
 
     let a = this.agents.get(j.sessionId);
     if (!a) {
@@ -103,6 +110,15 @@ export class Tailer {
     }
     if (j.type === "user" && !a.intent && typeof content === "string" && content.trim() && !content.startsWith("<"))
       a.intent = content.trim().slice(0, 160);
+    // the phase. an assistant record with words and no tool call ends a turn: the
+    // session is waiting for the person. anything after that means it is working again.
+    if (j.type === "assistant" && Array.isArray(content)) {
+      const said = content.filter((b: any) => b.type === "text" && typeof b.text === "string").map((b: any) => b.text.trim()).filter(Boolean).pop();
+      const phase: Agent["phase"] = content.some((b: any) => b.type === "tool_use") ? "working" : "waiting";
+      if (said) { a.note = said.replace(/\s+/g, " ").slice(0, 160); a.noteAt = at; changed = true; }
+      if (phase !== a.phase) { a.phase = phase; changed = true; }
+      if (at > a.lastAt) a.lastAt = at;
+    } else if (j.type === "user" && a.phase !== "working") { a.phase = "working"; changed = true; if (at > a.lastAt) a.lastAt = at; }
     if (Array.isArray(content)) for (const b of content) {
       if (b.type !== "tool_use") continue;
       a.tools[b.name] = (a.tools[b.name] ?? 0) + 1;
@@ -112,7 +128,7 @@ export class Tailer {
       }
     }
     if (touched && at > a.lastAt) a.lastAt = at;
-    return touched;
+    return touched || changed;
   }
 
   /** everyone who has touched this repo and is not long gone */
@@ -126,5 +142,5 @@ if (process.argv[1]?.endsWith("tail.ts")) {
   const t = new Tailer(process.cwd(), () => {});
   t.poll();
   for (const a of t.list())
-    console.log(`${a.state.padEnd(6)} ${a.short}${a.subagent ? " (subagent)" : ""}  ${new Date(a.lastAt).toISOString().slice(11, 16)}  ${a.lastFile}\n       ${a.intent ?? "—"}`);
+    console.log(`${a.state.padEnd(6)} ${(a.phase ?? "").padEnd(7)} ${a.short}${a.subagent ? " (subagent)" : ""}  ${new Date(a.lastAt).toISOString().slice(11, 16)}  ${a.lastFile}\n       ${a.note ?? a.intent ?? "—"}`);
 }
