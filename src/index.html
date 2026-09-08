@@ -28,7 +28,7 @@
   .plant input { font:inherit; font-size:12.5px; color:var(--ink); background:transparent; border:0; padding:4px 2px; width:260px; outline:none; caret-color:#fff; }
   .plant input::placeholder { color:var(--faint); }
   .plant .note { font-size:10px; color:var(--faint); letter-spacing:.04em; white-space:nowrap; }
-  .bar #keybtn, .bar #fsbtn { width:28px; height:28px; padding:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; letter-spacing:0; }
+  .bar #keybtn, .bar #fsbtn, .bar #viewbtn { width:28px; height:28px; padding:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; letter-spacing:0; }
   .bar button { pointer-events:auto; font:inherit; letter-spacing:inherit; text-transform:inherit; color:var(--dim);
                 background:transparent; border:1px solid rgba(226,234,244,.14); padding:6px 11px; cursor:pointer; }
   .bar button:hover { color:var(--ink); border-color:rgba(226,234,244,.3); }
@@ -86,6 +86,7 @@
   <span id="where"></span>
   <span class="sp"></span>
   <button id="activitybtn" aria-expanded="false">Activity</button>
+  <button id="viewbtn" title="see the star as orbits · v" hidden>◎</button>
   <button id="fsbtn" title="fullscreen · f">⛶</button>
   <button id="keybtn" title="key · k">?</button>
 </div>
@@ -115,6 +116,10 @@ let activityConnected = false;
 /* a snapshot has no server to write to, so what you place is kept in this
    browser only — marked as such, and gone if you clear the site's data */
 const LOCAL_KEY = () => "skylight-local:" + (NAME||"sky");
+/* two ways of seeing a star: the chart (a figure of joined stars) and the orbits
+   (its work on rings around it — done closest in, then to do, questions, explorations) */
+let VIEW = "chart"; try { VIEW = localStorage.getItem("skylight-view")==="orbit" ? "orbit" : "chart"; } catch {}
+function setView(v){ VIEW = v; try { localStorage.setItem("skylight-view", v); } catch {} layoutCache.clear(); hover = null; setChrome(); }
 function localStars(){ try { return JSON.parse(localStorage.getItem(LOCAL_KEY())||"[]"); } catch { return []; } }
 function keepLocal(star){ try { const all = localStars(); all.push(star); localStorage.setItem(LOCAL_KEY(), JSON.stringify(all)); } catch {} }
 let SYSTEMS = [], IDEAS = [], AGENTS = [], AREA_OF = {}, ROOT = "", FILE = "sky.yaml", SNAPSHOT = false, GOAL = "", NAME = "";
@@ -156,7 +161,7 @@ function load(data){
   for (const s of SYSTEMS) for (const a of s.areas) for (const it of a.items) if (it.kind==="open" && it.proposes && it.proposes.length) snap.pending++;
   for (const s of SYSTEMS) for (const a of s.areas){ snap.ring[s.name+"/"+a.name]=a.ring; snap.done[s.name+"/"+a.name]=a.items.filter(i=>i.kind==="done").length; }
   for (const g of AGENTS) snap.agent[g.id] = { state:g.state, phase:g.phase, where:g.where?g.where.area:null, file:g.lastFile };
-  snap.run = {}; for (const s of SYSTEMS) for (const a of s.areas) for (const it of a.items) if (it.run) snap.run[a.name+"/"+it.text] = it.run.status;
+  snap.run = {}; snap.tests = {}; for (const s of SYSTEMS) for (const a of s.areas) for (const it of a.items) if (it.run){ snap.run[a.name+"/"+it.text] = it.run.status; if (it.run.tests) snap.tests[a.name+"/"+it.text] = it.run.tests.status; }
   if (prevSnap){
     for (const k in snap.ring){ const [sn,an]=k.split("/"); const was=prevSnap.ring[k], now=snap.ring[k];
       if (was!==undefined && now>was) news.push({ text:`${an} · ${RINGS[now]}`, sys:sn, area:an, kind: now===4?"live":"lit" });
@@ -171,6 +176,10 @@ function load(data){
       if (n==="running") news.push({ text:`a ship is out · ${txt}`, area:an, kind:"agent" });
       if (n==="done") news.push({ text:`back from ${txt}`, area:an, kind:"agent" });
       if (n==="failed") news.push({ text:`lost at ${txt}`, area:an, kind:"agent" }); }
+    for (const k in snap.tests){ const [an,txt]=k.split("/"), w=(prevSnap.tests||{})[k], n=snap.tests[k]; if (w===n) continue;
+      const t = SYSTEMS.flatMap(s=>s.areas).find(a=>a.name===an)?.items.find(i=>i.text===txt)?.run?.tests || {};
+      if (n==="pass") news.push({ text:`${txt} · ${t.pass!==undefined?t.pass+" hold":"tests hold"}`, area:an, kind:"lit" });
+      if (n==="fail") news.push({ text:`${txt} · ${t.fail!==undefined?t.fail+" fail":"tests fail"}`, area:an, kind:"agent" }); }
     if (snap.pending > prevSnap.pending){ const d = snap.pending-prevSnap.pending; news.push({ text:`${d} answer${d===1?"":"s"} read · accept or reject`, kind:"proposal" }); }
   }
   if (prevSnap && news.length){ const c = {}; for (const n of news) c[n.kind]=(c[n.kind]||0)+1;
@@ -236,6 +245,8 @@ const KEYS = {
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>tests mapped, not verified — review before marking live</span>
         <span>click anything to answer it, right there · esc or the galaxy line to leave</span>`,
   area: `<span><svg viewBox="0 0 24 12"><path d="M16 6 L8 10 L10.5 6 L8 2 Z" fill="none" stroke="#ff6b3b" stroke-width="1"/></svg>click a star to send a ship · it works on a branch and comes back with a postcard</span>
+        <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="4.5" fill="none" stroke="rgba(226,234,244,.8)"/></svg>a solid ring: the project's tests hold on its branch · broken and orange: they fail</span>
+        <span><svg viewBox="0 0 24 12"><ellipse cx="12" cy="6" rx="9" ry="4" fill="none" stroke="rgba(226,234,244,.4)" stroke-dasharray="2 3"/></svg>◎ or v · see the star as orbits: done closest in, then to do, questions, explorations</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="3" fill="#fff"/></svg>done</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.6" fill="none" stroke="rgba(226,234,244,.55)" stroke-dasharray="1.5 1.5"/></svg>to do</span>
         <span><svg viewBox="0 0 24 12"><circle cx="12" cy="6" r="2.8" fill="none" stroke="#8fb4ff" stroke-width="1.3"/></svg>open question</span>
@@ -477,7 +488,7 @@ function drawDesk(time, alpha){
     // the words, outside the hull, reading as a list
     ctx.textAlign = left ? "right" : "left";
     const tx = x + nx*16, ty = y;
-    const sub = it.action.toUpperCase() + (it.agent?"  ·  "+it.agent.call.toUpperCase():"") + (it.kind==="run"?"  ·  "+callsign(it.item.run.id).toUpperCase():"") + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
+    const sub = it.action.toUpperCase() + (it.agent?"  ·  "+it.agent.call.toUpperCase():"") + (it.kind==="run"?"  ·  "+callsign(it.item.run.id).toUpperCase()+evidenceShort(it.item.run):"") + (it.area?"  ·  "+it.area.name.toUpperCase():it.p?"  ·  "+it.p.star.toUpperCase():"");
     ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>48?it.text.slice(0,46)+"…":it.text, tx, ty-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
     const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = left ? tx-w : tx;
@@ -492,7 +503,7 @@ function showDeskItem(it, x, y){
     : it.kind==="reconcile" ? b("rec","accept") + b("rej","reject",true)
     : it.kind==="question" ? b("answer","answer") : it.kind==="ship" ? b("ok","ok")
     : it.kind==="send" ? b("send", it.item.run && it.item.run.status!=="running" ? "send again" : "send a ship")
-    : it.kind==="run" ? (it.item.run.status==="running" ? b("recall","recall",true) : b("accept","accept") + b("revise","revise",true))
+    : it.kind==="run" ? (it.item.run.status==="running" ? b("recall","recall",true) : b("accept", it.item.run.tests && it.item.run.tests.status==="fail" ? "accept anyway" : "accept") + b("revise","revise",true))
     : b("light","light it");
   const props = it.kind==="reconcile" ? (it.item.proposes||[]) : [];
   const postcard = (s) => { s = s||""; if (s.length > 420) s = s.slice(0, 400).replace(/\s+\S*$/, "") + " …"; return esc(s).replace(/(^|\n)(did|doubted|untouched):/g, (m,a,w)=>`${a?"<br>":""}<b style="color:#ff9b70">${w}</b>`); };
@@ -506,7 +517,7 @@ function showDeskItem(it, x, y){
     : it.kind==="send" ? (it.item.run && it.item.run.status==="failed" ? `<b style="color:#ff9b70">lost</b> ${esc(it.item.run.said||"")}<br>` : "") + esc(it.item.more||it.item.context||"") + (it.item.more||it.item.context?"<br>":"") + `a ship works in its own worktree and comes back with a postcard`
     : it.kind==="run" ? (it.item.run.status==="running"
         ? `<b style="color:#ff9b70">${esc(callsign(it.item.run.id))}</b> is out · ${esc((runShip&&runShip.note)||"on its way")}${runShip&&runShip.lastFile?` · ${esc(runShip.lastFile.split("/").pop())}`:""}`
-        : `${postcard(it.item.run.said)}<br><span style="color:#48525f">${it.item.run.files||0} file${it.item.run.files===1?"":"s"} on ${esc(it.item.run.branch)} · back ${esc(agoText(Date.parse(it.item.run.ended||it.item.run.when)))}</span>`)
+        : `${postcard(it.item.run.said)}<br>${evidenceLine(it.item.run)}<span style="color:#48525f">${it.item.run.files||0} file${it.item.run.files===1?"":"s"} on ${esc(it.item.run.branch)} · back ${esc(agoText(Date.parse(it.item.run.ended||it.item.run.when)))}</span>`)
     : `tests mapped · ${esc(it.area.about||"")}`;
   decideEl.className = "panel answer";
   decideEl.innerHTML = `<div class="row"><b title="${esc(it.text)}">${esc(it.text)}</b><span class="acts">${acts}</span></div><p class="ctx">${ctx1}</p>` +
@@ -530,6 +541,7 @@ function showDeskItem(it, x, y){
   on("revise", () => { const n=(document.getElementById("note")||{}).value||""; if (!n.trim()){ document.getElementById("decnote").textContent = "say what to change"; return; } post("/api/dispatch", { area: it.area.name, text: it.text, note: n }); });
   on("accept", () => post("/api/accept", { area: it.area.name, text: it.text }));
   on("recall", () => post("/api/recall", { area: it.area.name, text: it.text }));
+  const rt = document.getElementById("retest"); if (rt) rt.addEventListener("click", (e) => { e.preventDefault(); post("/api/retest", { area: it.area.name, text: it.text }); });
   const note = document.getElementById("note"); if (note) note.addEventListener("keydown", e => e.stopPropagation());
   on("acc", () => post("/api/proposal", { name: it.p.name, action:"accept" }));
   on("veto", () => post("/api/proposal", { name: it.p.name, action:"veto" }));
@@ -641,19 +653,79 @@ function drawTracker(time, alpha){
     else if (p.kind==="todo"){ bloom(x,y,18,"255,255,255",.10); ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle="rgba(226,234,244,.7)"; ctx.lineWidth=1; ctx.setLineDash([1.6,1.6]); ctx.stroke(); ctx.setLineDash([]); }
     else if (p.kind==="open"){ bloom(x,y,26,"143,180,255",.35); ctx.beginPath(); ctx.arc(x,y,3.2,0,TAU); ctx.strokeStyle="#8fb4ff"; ctx.lineWidth=1.3; ctx.stroke(); }
     else { bloom(x,y,10,"226,234,244",.12); core(x,y,1.8,"rgba(226,234,244,.5)"); }
-    // a ship sent to this star circles it; one that came back waits beside it, nose down, until the person looks
-    const sent = AGENTS.find(g => g.star===p.text && g.state==="active");
-    if (sent){ const ang = time*.0016+p.tw, sx = x+Math.cos(ang)*22, sy = y+Math.sin(ang)*22*TILT;
-      ctx.save(); ctx.globalCompositeOperation="lighter"; for (let k=1;k<=8;k++){ const b=ang-k*.09; ctx.beginPath(); ctx.arc(x+Math.cos(b)*22,y+Math.sin(b)*22*TILT,2*(1-k/8),0,TAU); ctx.fillStyle=`rgba(255,107,59,${.4*(1-k/8)})`; ctx.fill(); } ctx.restore();
-      bloom(sx,sy,16,"255,107,59",.5); ship(sx,sy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),7,"#ff6b3b",1); nodes.push({ x:sx,y:sy,r:12,agent:sent }); }
-    else if (p.run && p.run.status==="done"){ const sx=x+14, sy=y-14; bloom(sx,sy,14,"255,107,59",.45); ship(sx,sy,Math.PI*.75,6,"#ff6b3b",.95); }
-    else if (p.run && p.run.status==="failed"){ ctx.beginPath(); ctx.arc(x,y,7,0,TAU); ctx.strokeStyle="rgba(255,107,59,.45)"; ctx.setLineDash([1.5,3]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); }
+    starMarks(p, x, y, time, 1);
     const left = x < C.cx - 40;
     ctx.font=font(10.5); ctx.textAlign = left?"right":"left";
     ctx.fillStyle = p.kind==="done"?"rgba(226,234,244,.9)":p.kind==="open"?"#8fb4ff":p.kind==="todo"?"rgba(226,234,244,.62)":"rgba(226,234,244,.42)";
     ctx.fillText(p.text, x+(left?-10:10), y+3.3+(p.ldy||0));
     if (alpha>.5) nodes.push({ x,y,r:13,item:p,area:a });
   }
+  ctx.globalAlpha=1;
+}
+
+/* what a star carries besides itself: a ship sent to it circles it; one that came back
+   waits beside it, nose down, until the person looks; evidence rings it — solid when the
+   tests hold, broken when they fail */
+function starMarks(p, x, y, time, sc){
+  const sent = AGENTS.find(g => g.star===p.text && g.state==="active");
+  if (sent){ const ang = time*.0016+p.tw, rr = 22*sc, sx = x+Math.cos(ang)*rr, sy = y+Math.sin(ang)*rr*TILT;
+    ctx.save(); ctx.globalCompositeOperation="lighter"; for (let k=1;k<=8;k++){ const b=ang-k*.09; ctx.beginPath(); ctx.arc(x+Math.cos(b)*rr,y+Math.sin(b)*rr*TILT,2*(1-k/8),0,TAU); ctx.fillStyle=`rgba(255,107,59,${.4*(1-k/8)})`; ctx.fill(); } ctx.restore();
+    bloom(sx,sy,16,"255,107,59",.5); ship(sx,sy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),7*sc,"#ff6b3b",1); nodes.push({ x:sx,y:sy,r:12,agent:sent }); return; }
+  if (!p.run) return;
+  if (p.run.status==="done"){ const sx=x+14*sc, sy=y-14*sc; bloom(sx,sy,14,"255,107,59",.45); ship(sx,sy,Math.PI*.75,6*sc,"#ff6b3b",.95); }
+  else if (p.run.status==="failed"){ ctx.beginPath(); ctx.arc(x,y,7*sc,0,TAU); ctx.strokeStyle="rgba(255,107,59,.45)"; ctx.setLineDash([1.5,3]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); }
+  const t = p.run.tests; if (!t || p.run.status==="accepted") return;
+  if (t.status==="pass"){ ctx.beginPath(); ctx.arc(x,y,8.5*sc,0,TAU); ctx.strokeStyle="rgba(226,234,244,.8)"; ctx.lineWidth=1; ctx.stroke(); }
+  else if (t.status==="fail"){ ctx.beginPath(); ctx.arc(x,y,8.5*sc,0,TAU); ctx.strokeStyle="rgba(255,107,59,.9)"; ctx.setLineDash([3,4]); ctx.lineWidth=1.2; ctx.stroke(); ctx.setLineDash([]); }
+  else if (t.status==="running" && !REDUCED){ const a0 = time*.004; ctx.beginPath(); ctx.arc(x,y,8.5*sc,a0,a0+Math.PI*.9); ctx.strokeStyle="rgba(226,234,244,.5)"; ctx.lineWidth=1; ctx.stroke(); }
+}
+
+/* ============================================================ ORBIT ======
+   the same star, seen another way: a disc, turning slowly, with its work on
+   rings — done closest in, then to do, then questions, then explorations out
+   at the edge. distance is state; the figure is the same tilted disc a star
+   system is, so the sky reads the same at every depth. */
+const ORB = { done:.34, todo:.6, open:.82, explore:1 };
+function drawOrbit(time, alpha){
+  const a=opened, C=constellation(a);
+  const cx=W/2, cy=H*.5-24, R=Math.min((W-200)/2, (H-210)/2/TILT), here=a.agents.length>0, atAlpha=a.agents.filter(g=>!g.star);
+  ctx.globalAlpha=alpha;
+  const hoveredRing = mouse ? Math.hypot(mouse.x-cx,(mouse.y-cy)/TILT)/R : -1;
+  for (const [k,f] of Object.entries(ORB)){
+    ctx.beginPath(); ctx.ellipse(cx,cy,R*f,R*f*TILT,0,0,TAU); ctx.lineWidth=1;
+    ctx.setLineDash(k==="done"?[]:k==="todo"?[2,7]:k==="open"?[2,7]:[1,9]);
+    ctx.strokeStyle = k==="done"?"rgba(226,234,244,.16)":k==="open"?"rgba(143,180,255,.16)":"rgba(226,234,244,.1)"; ctx.stroke(); ctx.setLineDash([]);
+    if (Math.abs(hoveredRing-f) < .07){ ctx.font=font(9); ctx.textAlign="right"; ctx.fillStyle=k==="open"?"rgba(143,180,255,.8)":"rgba(135,146,161,.75)"; ctx.fillText(KIND[k].toUpperCase(), cx-R*f-8, cy+3); }
+  }
+  // each star keeps its own orbit angle: spread by the golden angle within its ring, then wobble
+  const byKind = {}; for (const p of C.pts){ const n=(byKind[p.kind]=(byKind[p.kind]||0)+1); if (p.orb===undefined) p.orb = n*2.39996 + p.tw*.35; }
+  const bodies = C.pts.map(p => { const f = ORB[p.kind]||1, [x,y,d,ang] = proj(cx,cy,R*f,p.orb,time); return { p,x,y,d,ang,f }; }).sort((u,v)=>u.d-v.d);
+  const star = () => { const breath = REDUCED ? 1 : 1 + .06*Math.sin(time*(here?.004:.0014));
+    bloom(cx,cy,Math.max(70,R*.28)*breath,here?"255,107,59":"255,255,255",here?.5:.4); flare(cx,cy,R*.4*breath,here?"255,150,110":"255,255,255",.45); core(cx,cy,4.4,here?"#ff6b3b":"#fff");
+    if (atAlpha.length){ const holding = atAlpha.every(g=>g.phase==="waiting"), ang = holding ? -Math.PI/2 : time*.0012, hx = cx+Math.cos(ang)*R*.16, hy = cy+Math.sin(ang)*R*.16*TILT;
+      ship(hx,hy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),8,"#ff6b3b",1); if (holding) holdLight(hx,hy-12,time); atAlpha.forEach(g => nodes.push({ x:hx,y:hy,r:14,agent:g })); }
+    ctx.textAlign="center"; ctx.font=font(15,500); ctx.fillStyle=here?"#ff6b3b":"#fff"; ctx.fillText(a.name.toUpperCase(), cx, cy+R*ORB.done*TILT+34);
+    ctx.font=font(9.5); ctx.fillStyle="rgba(135,146,161,.85)"; ctx.fillText(RINGS[a.ring].toUpperCase(), cx, cy+R*ORB.done*TILT+50);
+    if (alpha>.5) nodes.push({ x:cx,y:cy,r:22, about:a }); };
+  // reach: a placed star the orchestrator has read joins the done star it named
+  for (const b of bodies){ const p=b.p; if (!p.seen || !p.near) continue; const j = bodies.find(q => q.p.kind==="done" && q.p.text===p.near.split(" | ")[0].trim()); if (!j) continue;
+    ctx.beginPath(); ctx.moveTo(j.x,j.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle="rgba(226,234,244,.28)"; ctx.setLineDash([3,5]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); }
+  let starDrawn=false;
+  for (const b of bodies){
+    if (!starDrawn && b.d > .5){ star(); starDrawn=true; }
+    const p=b.p, x=b.x, y=b.y, depth=.6+.4*b.d, tw = REDUCED?1:.9+.1*Math.sin(time*.0021+p.tw);
+    if (p.kind==="done"){ bloom(x,y,34*tw*depth,"255,255,255",.4*depth); core(x,y,2.8*tw*depth,`rgba(255,255,255,${.55+.45*b.d})`); }
+    else if (p.kind==="todo"){ ctx.beginPath(); ctx.arc(x,y,3*depth,0,TAU); ctx.strokeStyle=`rgba(226,234,244,${.35+.4*b.d})`; ctx.lineWidth=1; ctx.setLineDash([1.6,1.6]); ctx.stroke(); ctx.setLineDash([]); }
+    else if (p.kind==="open"){ bloom(x,y,22*depth,"143,180,255",.3*depth); ctx.beginPath(); ctx.arc(x,y,3*depth,0,TAU); ctx.strokeStyle=`rgba(143,180,255,${.5+.5*b.d})`; ctx.lineWidth=1.3; ctx.stroke(); }
+    else { core(x,y,1.7*depth,`rgba(226,234,244,${.25+.3*b.d})`); }
+    starMarks(p, x, y, time, depth);
+    const out = Math.cos(b.ang) < 0;
+    ctx.font=font(10.5); ctx.textAlign = out?"right":"left";
+    ctx.fillStyle = p.kind==="done"?`rgba(226,234,244,${.45+.5*b.d})`:p.kind==="open"?`rgba(143,180,255,${.45+.5*b.d})`:`rgba(226,234,244,${.25+.45*b.d})`;
+    ctx.fillText(p.text.length>34?p.text.slice(0,32)+"…":p.text, x+(out?-11:11), y+3.5);
+    if (alpha>.5) nodes.push({ x,y,r:13,item:p,area:a });
+  }
+  if (!starDrawn) star();
   ctx.globalAlpha=1;
 }
 
@@ -665,6 +737,7 @@ function outside(x, y){
   const mx = Math.max(120, W*.1), my = Math.max(80, H*.1);
   if (level.kind === "hq") return false;
   if (level.kind === "system"){ const cx=W/2, cy=H/2-24, R=Math.min((W-120)/2,(H-170)/2/TILT)-60; return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
+  if (level.kind === "area" && VIEW==="orbit"){ const cx=W/2, cy=H*.5-24, R=Math.min((W-200)/2, (H-210)/2/TILT); return Math.hypot(x-cx,(y-cy)/TILT) > R + mx; }
   if (level.kind === "area"){ const C=constellation(level.area); const xs=[C.cx,...C.pts.map(p=>p.x)], ys=[C.cy,...C.pts.map(p=>p.y)];
     const x0=Math.min(...xs)-mx, x1=Math.max(...xs)+200+mx, y0=Math.min(...ys)-my, y1=Math.max(...ys)+my; return x < x0 || x > x1 || y < y0 || y > y1; }
   return false;
@@ -676,7 +749,7 @@ function pick(x, y){
     const d = n.ell ? Math.hypot(n.x-x,(n.y-y)/TILT) : Math.hypot(n.x-x,n.y-y); if (d<n.r && d<bd){ bd=d; best=n; } }
   return best;
 }
-function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="hq") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; drawTracker(time, alpha); } }
+function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="hq") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; if (VIEW==="orbit") drawOrbit(time, alpha); else drawTracker(time, alpha); } }
 function draw(now){
   const time=now-t0; fade += (1-fade)*(REDUCED?1:.12);
   const frozen = !!hover && !hover.sys;          // reading a body, a star, a ship: hold still
@@ -725,6 +798,18 @@ function draw(now){
   drawLeader(); drawSparks(); if (!REDUCED) drawCursor(time);
   if (!REDUCED) requestAnimationFrame(draw);
 }
+/* evidence, said plainly: the project's tests on the ship's branch */
+function evidenceLine(run){
+  const t = run.tests; if (!t) return "";
+  const n = (k) => t[k]!==undefined ? t[k] : null;
+  const s = t.status==="running" ? `<span style="color:#8792a1">running the tests …</span>`
+    : t.status==="pass" ? `<b style="color:#e2eaf4">${n("pass")!==null?n("pass")+" tests hold":"the tests hold"}</b>`
+    : t.status==="fail" ? `<b style="color:#ff9b70">${n("fail")!==null?n("fail")+" fail":"the tests fail"}</b>${n("pass")!==null?` · ${n("pass")} hold`:""}${t.tail?`<br><span style="color:#8792a1">${esc(t.tail)}</span>`:""}`
+    : t.status==="timeout" ? `<span style="color:#ff9b70">the tests did not finish in time</span>`
+    : t.status==="none" ? `<span style="color:#48525f">no tests to run</span>` : `<span style="color:#ff9b70">could not run the tests</span>`;
+  return s + (t.status!=="running" && t.status!=="none" ? ` <a id="retest" href="#" style="color:#48525f;text-decoration:none;letter-spacing:.1em;font-size:9px">CHECK AGAIN</a>` : "") + "<br>";
+}
+const evidenceShort = (run) => { const t = run.tests; if (!t) return ""; return t.status==="pass" ? `  ·  ${t.pass!==undefined?t.pass+" HOLD":"HOLDS"}` : t.status==="fail" ? `  ·  ${t.fail!==undefined?t.fail+" FAIL":"FAILS"}` : t.status==="running" ? "  ·  TESTING" : ""; };
 const agoText = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
 /* one line, current and timestamped: what it said, when; where it last was */
 function activityDetail(g){
@@ -752,6 +837,7 @@ function renderActivity(){
 document.getElementById("activitybtn").addEventListener("click",()=>{crew.hidden=!crew.hidden; document.getElementById("activitybtn").setAttribute("aria-expanded",String(!crew.hidden)); if(!crew.hidden){renderActivity(); crew.style.right="22px"; crew.style.left="auto"; crew.style.top="auto"; crew.style.bottom="56px"; crew.style.maxHeight="70vh"; crew.style.overflowY="auto";}});
 function setChrome(){
   back.hidden = level.kind==="all";
+  viewbtn.hidden = level.kind!=="area"; viewbtn.textContent = VIEW==="orbit" ? "✦" : "◎"; viewbtn.title = VIEW==="orbit" ? "see the star as a chart · v" : "see the star as orbits · v";
   key.innerHTML = `<h4>key · ${level.kind==="all"?"the galaxy":level.kind==="hq"?"hq":level.kind==="system"?"a star system":"a constellation"}</h4><div class="key">${KEYS[level.kind]}</div><p>sky.yaml lives at<br><code>${esc(FILE)}</code></p>`;
   where.innerHTML = level.kind==="all" ? "" : level.kind==="hq" ? `<b>hq</b>` : level.kind==="system" ? `<b>${esc(level.sys.name)}</b>` : `${esc(level.sys.name)} <span style="opacity:.5">/</span> <b>${esc(level.area.name)}</b>`;
 }
@@ -766,6 +852,12 @@ function up(){ if (level.kind==="area") go({ kind:"system", sys:level.sys }); el
 function wouldPlace(x, y){
   if (level.kind === "hq") return null;
   if (level.kind === "all") return { kind:"idea", area:null, label:"pin an idea" };
+  if (level.kind === "area" && VIEW==="orbit"){
+    // on the orbits, the ring you click is the kind you mean
+    const cx=W/2, cy=H*.5-24, R=Math.min((W-200)/2, (H-210)/2/TILT), r = Math.hypot(x-cx,(y-cy)/TILT)/R;
+    const kind = r < (ORB.done+ORB.todo)/2 ? "done" : r < (ORB.todo+ORB.open)/2 ? "todo" : r < (ORB.open+ORB.explore)/2 ? "open" : "explore";
+    return { kind, area:level.area.name, label:KIND[kind] };
+  }
   if (level.kind === "area"){
     const C = constellation(level.area);
     if (y < C.cy - 60) return { kind:"todo", area:level.area.name, label:"to do" };
@@ -837,11 +929,13 @@ back.addEventListener("click",up);
 document.getElementById("keybtn").addEventListener("click",()=>{ key.hidden=!key.hidden; unplant(); });
 function fullscreen(){ if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); }
 document.getElementById("fsbtn").addEventListener("click", fullscreen);
+const viewbtn = document.getElementById("viewbtn");
+viewbtn.addEventListener("click", () => setView(VIEW==="orbit" ? "chart" : "orbit"));
 mark.addEventListener("mouseenter",()=>{ tip.innerHTML = `<span style="color:#fff">${esc(NAME)}</span><em>${esc(GOAL||"no goal set — add goal: to sky.yaml")}</em><small>${SYSTEMS.length} systems · ${SYSTEMS.reduce((n,s)=>n+s.areas.length,0)} areas · ${SYSTEMS.reduce((n,s)=>n+s.areas.filter(a=>a.ring===4).length,0)} live · ${AGENTS.filter(g=>g.state==="active").length} working</small>`;
   tip.style.transform="translate(0,0)"; tip.style.left="22px"; tip.style.top="50px"; tip.classList.add("on"); });
 mark.addEventListener("mouseleave",()=>tip.classList.remove("on"));
 addEventListener("keydown",e=>{ if (e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
-  if(e.key==="Escape"){ if(!key.hidden||!crew.hidden||!decideEl.hidden||planting){ key.hidden=true; crew.hidden=true; decideEl.hidden=true; unplant(); } else up(); } if(e.key==="k") key.hidden=!key.hidden; if(e.key==="f") fullscreen(); });
+  if(e.key==="Escape"){ if(!key.hidden||!crew.hidden||!decideEl.hidden||planting){ key.hidden=true; crew.hidden=true; decideEl.hidden=true; unplant(); } else up(); } if(e.key==="k") key.hidden=!key.hidden; if(e.key==="f") fullscreen(); if(e.key==="v" && level.kind==="area") setView(VIEW==="orbit" ? "chart" : "orbit"); });
 addEventListener("resize",()=>{ resize(); if(REDUCED) draw(performance.now()); });
 
 const dot = document.getElementById("livedot"), livetext = document.getElementById("livetext");

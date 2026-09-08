@@ -26,9 +26,19 @@ import { claudeBinary } from "./model.ts";
 import type { Agent } from "./tail.ts";
 
 export type RunStatus = "running" | "done" | "failed" | "recalled" | "accepted";
-export type Run = { id: string; branch: string; status: RunStatus; when: string; by: "person"; base?: string; note?: string; session?: string; ended?: string; said?: string; files?: number };
+/** evidence: the project's own tests, run on the ship's branch. pass or fail, never a score */
+export type Tests = { status: "running" | "pass" | "fail" | "none" | "timeout" | "error"; pass?: number; fail?: number; tail?: string; at: string };
+export type Run = { id: string; branch: string; status: RunStatus; when: string; by: "person"; base?: string; note?: string; session?: string; ended?: string; said?: string; files?: number; tests?: Tests };
 type Hooks = { onChange: () => void };
-type Options = { bin?: string; tools?: string[]; home?: string; env?: NodeJS.ProcessEnv };
+type Options = { bin?: string; tools?: string[]; home?: string; env?: NodeJS.ProcessEnv; npm?: string; testTimeout?: number };
+
+/** pass and fail counts from whatever reporter spoke: node's "ℹ pass 82", jest's "80 passed, 3 failed", vitest, pytest */
+export function parseCounts(out: string): { pass?: number; fail?: number } {
+  const last = (re: RegExp) => { let m: RegExpExecArray | null, v: number | undefined; while ((m = re.exec(out))) v = Number(m[1]); return v; };
+  const pass = last(/\bpass(?:ed|ing)?\s+(\d+)\b/gi) ?? last(/\b(\d+)\s+pass(?:ed|ing)?\b/gi);
+  const fail = last(/\bfail(?:ed|ing|ures?)?\s+(\d+)\b/gi) ?? last(/\b(\d+)\s+fail(?:ed|ing|ures?)?\b/gi);
+  return { ...(pass !== undefined ? { pass } : {}), ...(fail !== undefined ? { fail } : {}) };
+}
 
 const DEFAULT_TOOLS = ["Bash(git add:*)", "Bash(git commit:*)", "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
   "Bash(npm test:*)", "Bash(npm run:*)", "Bash(npx:*)", "Bash(node:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(rg:*)"];
@@ -240,6 +250,47 @@ untouched: <what you deliberately left alone>`;
       writeFileSync(file, doc.toString());
     }
     this.hooks.onChange();
+    if (l && status !== "recalled") this.evidence(area, text, l.dir);
+  }
+
+  /** step 3: evidence. the ship said what it did; the project's tests say whether it holds */
+  private evidence(area: string, text: string, dir: string): void {
+    if (/^(0|false|no|off)$/i.test((process.env.SKY_SHIP_TESTS ?? "").trim())) return;
+    const write = (tests: Tests) => {
+      const file = join(this.root, "sky.yaml");
+      const doc = parseDocument(readFileSync(file, "utf8"));
+      const run = locate(doc, area, text)?.item?.get("run", true) as YAMLMap | undefined;
+      if (!run) return;
+      run.set("tests", doc.createNode(tests)); writeFileSync(file, doc.toString()); this.hooks.onChange();
+    };
+    let script: unknown; try { script = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.test; } catch {}
+    if (typeof script !== "string" || !script.trim()) { write({ status: "none", at: new Date().toISOString() }); return; }
+    write({ status: "running", at: new Date().toISOString() });
+    const env: NodeJS.ProcessEnv = { ...(this.opts.env ?? process.env), CI: "1" }; delete env.CLAUDECODE;
+    let out = ""; const take = (c: Buffer) => { out += c.toString("utf8"); if (out.length > 30_000) out = out.slice(-30_000); };
+    let child: ChildProcess;
+    try { child = spawn(this.opts.npm ?? "npm", ["test", "--silent"], { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] }); }
+    catch { write({ status: "error", tail: "could not run npm test", at: new Date().toISOString() }); return; }
+    child.stdout!.on("data", take); child.stderr!.on("data", take);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch {} }, this.opts.testTimeout ?? 5 * 60_000);
+    child.on("error", () => { clearTimeout(timer); write({ status: "error", tail: "could not run npm test", at: new Date().toISOString() }); });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      const tail = out.split("\n").map((s) => s.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean).pop()?.slice(0, 160);
+      write({ status: timedOut ? "timeout" : code === 0 ? "pass" : "fail", ...parseCounts(out), ...(tail ? { tail } : {}), at: new Date().toISOString() });
+    });
+  }
+
+  /** run the evidence again — main may have moved under the branch, or the first run never happened */
+  retest(area: string, text: string): string | null {
+    const doc = parseDocument(readFileSync(join(this.root, "sky.yaml"), "utf8"));
+    const at = locate(doc, area, text); if (!at) return `no area called ${area}`; if (!at.item) return "no such star";
+    const run = runOf(at.item); if (!run) return "no ship was sent to that star";
+    if (run.status === "running") return "the ship is still out"; if (run.status === "accepted") return "already landed";
+    if (run.tests?.status === "running") return "the tests are already running";
+    const dir = this.worktreeFor(run.branch); if (!existsSync(dir)) return "the ship's worktree is gone";
+    this.evidence(area, text, dir); return null;
   }
 
   recall(area: string, text: string): string | null {

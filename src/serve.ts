@@ -267,12 +267,12 @@ const server = createServer(async (req, res) => {
       } catch (e) { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: (e as Error).message })); }
     }); return;
   }
-  if ((url === "/api/dispatch" || url === "/api/recall" || url === "/api/accept") && req.method === "POST") {
+  if ((url === "/api/dispatch" || url === "/api/recall" || url === "/api/accept" || url === "/api/retest") && req.method === "POST") {
     let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
       try {
         const b = JSON.parse(body), area = String(b.area ?? ""), text = String(b.text ?? "").trim();
         const err = url === "/api/dispatch" ? dispatcher.send(area, text, String(b.note ?? "").trim()).error ?? null
-          : url === "/api/recall" ? dispatcher.recall(area, text) : dispatcher.accept(area, text);
+          : url === "/api/recall" ? dispatcher.recall(area, text) : url === "/api/retest" ? dispatcher.retest(area, text) : dispatcher.accept(area, text);
         if (err) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: err })); }
         sky = readSky(ROOT); agents = allAgents(); push();
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
