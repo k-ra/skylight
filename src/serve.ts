@@ -36,8 +36,11 @@ const push = () => { const data = `event: sky\ndata: ${payload()}\n\n`; for (con
 /**
  * Presence, reported. The tailer finds Claude Code sessions on its own; any
  * other orchestrator can put its agents on the sky by posting here:
- *   POST /api/presence  { id, intent?, file?, state?: "active"|"idle"|"gone" }
+ *   POST /api/presence  { id, intent?, file?, state?: "active"|"idle"|"gone",
+ *                         phase?: "working"|"waiting"|"done"|"failed", note?, task? }
  * A report is good for ten minutes, then the ship goes idle; a day, then gone.
+ * `phase: waiting` with a `note` is how a ship asks the person something — it
+ * shows up in HQ as waiting on you. `done` and `failed` end the ship's work.
  */
 const reported = new Map<string, Agent>();
 function presence(b: any): string | null {
@@ -45,9 +48,12 @@ function presence(b: any): string | null {
   if (b.state === "gone") { reported.delete(id); return null; }
   const prev = reported.get(id);
   const file = typeof b.file === "string" ? b.file.replace(/^\/+/, "") : prev?.lastFile ?? null;
+  const phase = ["working", "waiting", "done", "failed"].includes(b.phase) ? b.phase as Agent["phase"] : prev?.phase;
+  const note = typeof b.note === "string" ? b.note.replace(/\s+/g, " ").trim().slice(0, 160) : prev?.note ?? null;
   const a: Agent = { provider: "reported", id, short: id.slice(0, 8), cwd: ROOT, subagent: !!b.subagent, intent: typeof b.intent === "string" ? b.intent.slice(0, 160) : prev?.intent ?? null,
     lastAt: Date.now(), lastFile: file, lastTool: typeof b.tool === "string" ? b.tool : "reported", touched: [...(prev?.touched ?? []), ...(file ? [{ file, at: Date.now(), tool: "reported" }] : [])].slice(-400),
-    tools: prev?.tools ?? {}, state: b.state === "idle" ? "idle" : "active" };
+    tools: prev?.tools ?? {}, state: b.state === "idle" || phase === "done" || phase === "failed" ? "idle" : "active",
+    phase, note, noteAt: typeof b.note === "string" ? Date.now() : prev?.noteAt, task: typeof b.task === "string" ? b.task.slice(0, 80) : prev?.task ?? null };
   reported.set(id, a); return null;
 }
 const allAgents = (): Agent[] => {

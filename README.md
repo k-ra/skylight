@@ -104,7 +104,22 @@ curl -X POST http://127.0.0.1:4340/api/presence \
 ```
 
 A report is good for ten minutes, then the ship goes idle; post `state: "gone"`
-to take it off. Set `SKY_MODEL_PROVIDER=codex` to use Codex for planning, or `claude` (the default) for Claude Code.
+to take it off. A ship can also say what phase it is in and what it last said:
+
+```bash
+curl -X POST http://127.0.0.1:4340/api/presence \
+  -H 'content-type: application/json' \
+  -d '{"id":"worker-3","phase":"waiting","note":"Drop the old index, or keep it for the audit log?","task":"HUNT-42"}'
+```
+
+| phase | on the sky |
+|---|---|
+| `working` | the ship moves, with a trail |
+| `waiting` | the ship holds still with a blue light, and HQ lists it as waiting on you, with the note |
+| `done` · `failed` | the ship comes home; `failed` rides across the sky as news |
+
+Claude Code sessions get their phase from their transcripts without reporting
+anything: a turn that ends in words and no tool call is a ship waiting for you. Set `SKY_MODEL_PROVIDER=codex` to use Codex for planning, or `claude` (the default) for Claude Code.
 
 ## The gesture
 

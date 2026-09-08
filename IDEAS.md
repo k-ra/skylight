@@ -1,6 +1,8 @@
 # Ideas
 
-The packet. Two lists: **design directions** and **features**. Each scheduled session reads this, picks
+The packet. The other list of work is [WORK_IN_PROGRESS.md](WORK_IN_PROGRESS.md) — the loop
+(place → review → assign → follow → inspect → accept); that comes first when it has a next step.
+Two lists: **design directions** and **features**. Each scheduled session reads this, picks
 one thing worth an evening, builds it, and adds a few new ideas of its own at the bottom of each list.
 
 Status marks: `·` open · `→` being built · `✓` shipped (write the date) · `✗` vetoed by Kyra (keep the line, say why).
@@ -85,3 +87,22 @@ paths in the UI · sentences where a mark will do.
 ## Added by sessions
 
 Append here, dated, with the same marks. Keep each line to two sentences.
+
+### 2026-09-08 · after the ship phases
+
+Design
+- `·` **A grammar of ship states.** Waiting blinks blue (done). Failed: the wireframe drawn with one
+  edge missing. Done: the ship fades into the star it was at and leaves a spark. States as form, never
+  as labels.
+- `·` **HQ threads by age.** The item that has waited longest sits highest on the oval, the newest
+  lowest, so the two lists read as "what has been waiting on you longest".
+- `·` **Notes along the orbit.** Hovering a system draws the note of the ship there as a faint line of
+  text along its orbit tangent. Copy appears on the sky only while you look.
+
+Features
+- `·` **Reply from HQ.** A reported ship may carry a `reply_url`; its HQ card gets an input and
+  Skylight posts the answer back. The first way to answer a ship without finding its terminal.
+- `·` **Failure postcard.** When a ship reports `failed`, its note becomes an `open` question on the
+  star it was at, `by: <callsign>`, so a failure lands in the spec instead of a log.
+- `·` **Task threads.** Ships sharing a `task` fold into one HQ entry with one line per ship beneath
+  it, so a subagent fleet reads as one job.
