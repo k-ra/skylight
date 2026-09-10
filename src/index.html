@@ -15,7 +15,10 @@
   .bar .mark { pointer-events:auto; width:22px; height:22px; display:inline-flex; cursor:default; }
   .bar .mark svg { width:22px; height:22px; fill:#fff; filter:drop-shadow(0 0 6px rgba(255,255,255,.6)); }
   .panel.crew { right:auto; top:auto; left:22px; bottom:118px; width:min(400px, calc(100vw - 44px)); }
-  .crew .a { display:grid; gap:3px; padding:8px 0 8px 12px; border-left:1px solid rgba(226,234,244,.12); margin-bottom:6px; }
+  .crew .a { display:grid; gap:2px; padding:6px 0 6px 12px; border-left:1px solid rgba(226,234,244,.12); margin-bottom:4px; grid-template-columns:auto 1fr; column-gap:10px; align-items:baseline; }
+  .crew .a p { grid-column:1 / -1; margin:0; color:var(--dim); letter-spacing:0; font-size:11px; line-height:1.4; text-transform:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .crew .a span { color:var(--faint); letter-spacing:.06em; }
+  .crew p.home { color:var(--faint); margin:6px 0 0 12px; }
   .crew .a.active { border-left-color:var(--agent); }
   .crew .a.waiting { border-left-color:#8fb4ff; }
   .crew .a b { color:var(--ink); font-weight:500; text-transform:uppercase; letter-spacing:.1em; font-size:10px; }
@@ -387,14 +390,14 @@ function drawSystem(s, cx, cy, R, detailed, time, alpha, clickable){
       ctx.font=font(10.5,here?500:400); ctx.textAlign=out?"right":"left";
       ctx.fillStyle = here?"#ff6b3b":planned?"rgba(72,82,95,.95)":`rgba(226,234,244,${.45+.45*b.d})`;
       ctx.fillText((a.name+(here?` · ${holding?"waiting":a.agents.length>1?a.agents.length+" agents":"agent"}`:"")).toUpperCase(), b.x+(out?-11:11), b.y+3.5);
-      if (alpha>.5 && !here) nodes.push({ x:b.x,y:b.y,r:16,area:a });
-      else if (alpha>.5) nodes.push({ x:b.x,y:b.y,r:26,area:a });
+      if (alpha>0 && !here) nodes.push({ x:b.x,y:b.y,r:16,area:a });
+      else if (alpha>0) nodes.push({ x:b.x,y:b.y,r:26,area:a });
     }
   }
   if (!starDrawn) star();
   ctx.textAlign="center"; ctx.font=font(detailed?14:13,500); ctx.fillStyle = hovered&&clickable ? "#fff" : "rgba(255,255,255,.9)";
   ctx.fillText(s.name.toUpperCase(), cx, cy+R*TILT+22);
-  if (!detailed && clickable && alpha>.5) nodes.push({ x:cx, y:cy, r:R*1.05, sys:s, ell:true });
+  if (!detailed && clickable && alpha>0) nodes.push({ x:cx, y:cy, r:R*1.05, sys:s, ell:true });
 }
 
 /* ============================================================ HQ, the sun
@@ -424,11 +427,11 @@ function drawSun(time, alpha){
   const idle = AGENTS.filter(g => g.state==="active" && !g.where);
   idle.forEach((g,i) => { const outer = i%2===1, rr = outer ? R*1.6 : R, ang = (i/Math.max(1,idle.length))*TAU + time*(outer?-.00009:.00013) + g.seed;
     const x = cx+Math.cos(ang)*rr, y = cy+Math.sin(ang)*rr*(outer?TILT*.8:TILT), d = (Math.sin(ang)+1)/2;
-    ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (g.phase==="waiting") holdLight(x,y-8,time); if (alpha>.5) nodes.push({ x,y,r:12, agent:g }); });
+    ship(x,y,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),5,"#ff6b3b",.35+.45*d); if (g.phase==="waiting") holdLight(x,y-8,time); if (alpha>0) nodes.push({ x,y,r:12, agent:g }); });
   if (level.kind !== "hq"){
     if (q){ ctx.textAlign="center"; ctx.font=font(11,500); ctx.fillStyle="rgba(255,170,120,.95)"; ctx.fillText(String(q), cx, cy-R*TILT-16); }
     if (lastTurn){ ctx.textAlign="center"; ctx.font=font(8.5); ctx.fillStyle="rgba(135,146,161,.55)"; ctx.fillText(lastTurn.toUpperCase(), cx, cy-R*TILT-30); }
-    if (alpha>.5) nodes.push({ x:cx, y:cy, r:R*.7, orch:true, ell:true });
+    if (alpha>0) nodes.push({ x:cx, y:cy, r:R*.7, orch:true, ell:true });
   }
   ctx.globalAlpha = 1;
 }
@@ -455,7 +458,7 @@ function drawAll(time, alpha){
     const x = bx + Math.sin(time*.0002+id.seed)*(id.at?6:18), y = by + Math.cos(time*.00017+id.seed)*(id.at?5:14);
     const tw = REDUCED?1:.8+.2*Math.sin(time*.002+id.seed);
     bloom(x,y,10*tw,"226,234,244",.18); core(x,y,1.8,"rgba(226,234,244,.7)");
-    if (alpha>.5) nodes.push({ x,y,r:14, idea:id });
+    if (alpha>0) nodes.push({ x,y,r:14, idea:id });
   });
   ctx.globalAlpha=1;
 }
@@ -492,7 +495,7 @@ function drawDesk(time, alpha){
     ctx.font=font(10.5, hot?500:400); ctx.fillStyle = hot ? "#fff" : "rgba(226,234,244,.9)"; ctx.fillText(it.text.length>48?it.text.slice(0,46)+"…":it.text, tx, ty-4);
     ctx.font=font(9); ctx.fillStyle=col; ctx.fillText(sub, tx, ty+10);
     const w = Math.max(ctx.measureText(sub).width, it.text.length*6.6)+20, bx = left ? tx-w : tx;
-    if (alpha>.5) nodes.push({ x, y, rect:[Math.min(bx,x-10), y-18, Math.max(bx+w,x+10)-Math.min(bx,x-10), 34], desk:it });
+    if (alpha>0) nodes.push({ x, y, rect:[Math.min(bx,x-10), y-18, Math.max(bx+w,x+10)-Math.min(bx,x-10), 34], desk:it });
   });
   ctx.globalAlpha = 1;
 }
@@ -646,7 +649,7 @@ function drawTracker(time, alpha){
         ship(hx,hy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),8,"#ff6b3b",1); if (holding) holdLight(hx,hy-12,time); atAlpha.forEach(g => nodes.push({ x:hx,y:hy,r:14,agent:g })); }
       ctx.textAlign="center"; ctx.font=font(15,500); ctx.fillStyle=here?"#ff6b3b":"#fff"; ctx.fillText(a.name.toUpperCase(), x, y+44);
       ctx.font=font(9.5); ctx.fillStyle="rgba(135,146,161,.85)"; ctx.fillText(RINGS[a.ring].toUpperCase(), x, y+60);
-      if (alpha>.5) nodes.push({ x,y,r:20, about:a });
+      if (alpha>0) nodes.push({ x,y,r:20, about:a });
       continue;
     }
     if (p.kind==="done"){ bloom(x,y,40*tw,"255,255,255",.42); flare(x,y,34,"255,255,255",.45); core(x,y,3*tw,"#fff"); }
@@ -658,7 +661,7 @@ function drawTracker(time, alpha){
     ctx.font=font(10.5); ctx.textAlign = left?"right":"left";
     ctx.fillStyle = p.kind==="done"?"rgba(226,234,244,.9)":p.kind==="open"?"#8fb4ff":p.kind==="todo"?"rgba(226,234,244,.62)":"rgba(226,234,244,.42)";
     ctx.fillText(p.text, x+(left?-10:10), y+3.3+(p.ldy||0));
-    if (alpha>.5) nodes.push({ x,y,r:13,item:p,area:a });
+    if (alpha>0) nodes.push({ x,y,r:13,item:p,area:a });
   }
   ctx.globalAlpha=1;
 }
@@ -708,7 +711,7 @@ function drawOrbit(time, alpha){
       ship(hx,hy,Math.atan2(Math.cos(ang)*TILT,-Math.sin(ang)),8,"#ff6b3b",1); if (holding) holdLight(hx,hy-12,time); atAlpha.forEach(g => nodes.push({ x:hx,y:hy,r:14,agent:g })); }
     ctx.textAlign="center"; ctx.font=font(15,500); ctx.fillStyle=here?"#ff6b3b":"#fff"; ctx.fillText(a.name.toUpperCase(), cx, cy+R*ORB.done*TILT+34);
     ctx.font=font(9.5); ctx.fillStyle="rgba(135,146,161,.85)"; ctx.fillText(RINGS[a.ring].toUpperCase(), cx, cy+R*ORB.done*TILT+50);
-    if (alpha>.5) nodes.push({ x:cx,y:cy,r:22, about:a }); };
+    if (alpha>0) nodes.push({ x:cx,y:cy,r:22, about:a }); };
   // reach: a placed star the orchestrator has read joins the done star it named
   for (const b of bodies){ const p=b.p; if (!p.seen || !p.near) continue; const j = bodies.find(q => q.p.kind==="done" && q.p.text===p.near.split(" | ")[0].trim()); if (!j) continue;
     ctx.beginPath(); ctx.moveTo(j.x,j.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle="rgba(226,234,244,.28)"; ctx.setLineDash([3,5]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]); }
@@ -725,7 +728,7 @@ function drawOrbit(time, alpha){
     ctx.font=font(10.5); ctx.textAlign = out?"right":"left";
     ctx.fillStyle = p.kind==="done"?`rgba(226,234,244,${.45+.5*b.d})`:p.kind==="open"?`rgba(143,180,255,${.45+.5*b.d})`:`rgba(226,234,244,${.25+.45*b.d})`;
     ctx.fillText(p.text.length>34?p.text.slice(0,32)+"…":p.text, x+(out?-11:11), y+3.5);
-    if (alpha>.5) nodes.push({ x,y,r:13,item:p,area:a });
+    if (alpha>0) nodes.push({ x,y,r:13,item:p,area:a });
   }
   if (!starDrawn) star();
   ctx.globalAlpha=1;
@@ -753,12 +756,15 @@ function pick(x, y){
 }
 function drawLevel(L, time, alpha){ if (L.kind==="all") drawAll(time, alpha); else if (L.kind==="hq") drawDesk(time, alpha); else if (L.kind==="system") drawOne(L.sys, time, alpha); else { opened = L.area; if (VIEW==="orbit") drawOrbit(time, alpha); else drawTracker(time, alpha); } }
 function draw(now){
-  const time=now-t0; fade += (1-fade)*(REDUCED?1:.12);
+  const time=now-t0;
+  // the crossfade runs on the clock, not on frames: a slow or hidden tab still arrives in half a second
+  fade = REDUCED ? 1 : 1 - (1-fade)*Math.exp(-(lastNow ? Math.min(1000, now-lastNow) : 16)/110);
   const frozen = !!hover && !hover.sys;          // reading a body, a star, a ship: hold still
   frameStep = lastNow ? Math.min(3, Math.max(.25, (now - lastNow) / 16.7)) : 1;   // a hidden tab draws rarely; things move by time, not by frame
   if (!frozen && lastNow) motion += Math.min(50, now - lastNow); lastNow = now;
   ctx.clearRect(0,0,W,H); drawDawn(time); drawDust(time); nodes=[];
   if (prev && fade<.995) drawLevel(prev, motion, 1-fade);
+  nodes=[];   // whatever the fading level pushed is not clickable — only the level you are on is
   ctx.save(); const sc = .96+.04*fade; ctx.translate(W/2*(1-sc), H/2*(1-sc)); ctx.scale(sc,sc); drawLevel(level, motion, fade); ctx.restore();
   drawSun(time, 1);
   hover = mouse ? pick(mouse.x, mouse.y) : null;
@@ -784,11 +790,7 @@ function draw(now){
       : hover.proposal ? `<span style="color:#fff">${esc(hover.proposal.name)}</span><em>${esc(hover.proposal.about)}</em><em>${hover.proposal.ideas.map(i=>"· "+esc(i)).join("<br>")}</em><small>an agent proposes this under ${esc(hover.proposal.star)} · click to accept or veto</small>`
       : hover.idea ? `${esc(hover.idea.text)}<small>a loose idea · sky.yaml › ideas</small>`
       : hover.about ? `${esc(hover.about.name)}<em>${esc(hover.about.about)}</em><small>${RINGS[hover.about.ring]} · ${hover.about.files} files · ${hover.about.lines} lines</small>`
-      : g ? `<span style="color:#ff6b3b">${g.call}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</span><em>${esc(g.note||g.intent||"nothing said yet")}</em><small>${esc(activityDetail(g))}</small>
-             <div class="ch"><b>state</b><span>${esc(phaseText(g))}${g.where?" · at "+esc(g.where.area):" · nowhere yet"}</span>
-             <b>tools</b><span>${esc(Object.entries(g.tools||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k.replace(/^mcp__\w+__/,"")} ×${v}`).join(" · ")||"—")}</span>
-             <b>has been in</b><span>${esc(Object.entries(g.areas||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`${k} ${v}`).join(" · ")||"—")}</span>
-             <b>last</b><span>${g.lastFile?esc(g.lastFile)+" · ":""}${ago(g.lastAt)}</span></div>`
+      : g ? `<span style="color:#ff6b3b">${g.call}</span>${g.note||g.intent?`<em>${esc(g.note||g.intent)}</em>`:""}<small>${esc(phaseText(g))}${g.where?" · at "+esc(g.where.area):""}${g.lastFile?" · "+esc(g.lastFile.split("/").pop()):""} · ${ago(g.noteAt||g.lastAt)}</small>`
       : `${esc(hover.area.name)}${hover.area.about?`<em>${esc(hover.area.about)}</em>`:""}<small>${RINGS[hover.area.ring]} · ${hover.area.items.length} tracked${hover.area.agents.length?` · ${hover.area.agents.length} agent${hover.area.agents.length>1?"s":""} here`:""} · click to open</small>`;
     tip.classList.add("on");
     // never off the frame: flip to the left near the right edge, clamp top and bottom
@@ -798,7 +800,8 @@ function draw(now){
     tip.style.transform = "translate(0,-50%)"; tip.style.left = left + "px"; tip.style.top = top + "px";
   } else tip.classList.remove("on");
   drawLeader(); drawSparks(); if (!REDUCED) drawCursor(time);
-  if (!REDUCED) requestAnimationFrame(draw);
+  // a hidden tab gets no animation frames at all; tick slowly on a timer so the sky is still current when it is looked at
+  if (!REDUCED){ if (document.hidden) setTimeout(() => draw(performance.now()), 250); else requestAnimationFrame(draw); }
 }
 /* evidence, said plainly: the project's tests on the ship's branch */
 function evidenceLine(run){
@@ -813,10 +816,6 @@ function evidenceLine(run){
 }
 const evidenceShort = (run) => { const t = run.tests; if (!t) return ""; return t.status==="pass" ? "  ·  HOLDS" : t.status==="fail" ? `  ·  BREAKS${t.fail!==undefined?" "+t.fail:""}` : t.status==="running" ? "  ·  TESTING" : ""; };
 const agoText = (t) => { const m=Math.round((Date.now()-t)/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.round(m/60)} h ago`; };
-/* one line, current and timestamped: what it said, when; where it last was */
-function activityDetail(g){
-  return [g.noteAt ? `said ${agoText(g.noteAt)}` : null, g.lastTool ? g.lastTool.replace(/^mcp__\w+__/,"").toLowerCase() : null, g.lastFile ? g.lastFile.split("/").pop() : null, g.task ? `task ${g.task}` : null].filter(Boolean).join(" · ") || "nothing observed yet";
-}
 /* the five phases a ship can be in, said plainly */
 function phaseText(g){
   return g.state==="unknown" ? "unknown — no recent event" : g.phase==="waiting" ? "waiting for you" : g.phase==="failed" ? "failed" : g.phase==="done" ? "done" : g.state==="active" ? "working" : g.state==="idle" ? "turn ended" : g.state;
@@ -829,12 +828,12 @@ function disconnectActivity(){
   dot.classList.add("off"); dot.title = "Disconnected — activity is not current";
   livetext.textContent = "disconnected";
 }
+/* the ships, one line each: who, what they are doing, where. nothing else */
 function renderActivity(){
-  const active = AGENTS.filter(g=>g.state==="active"), uncertain = AGENTS.filter(g=>g.state==="unknown"), history = AGENTS.filter(g=>g.state==="idle");
-  document.getElementById("activitybtn").textContent = activityConnected ? `Activity · ${active.length}` : "Activity · disconnected";
-  const row = g => `<div class="a ${g.state}${g.phase==="waiting"?" waiting":""}"><b>${esc(g.call)}${g.provider&&g.provider!=="reported"?" · "+esc(g.provider):""}${g.subagent?" · a tender":""}</b><p>${esc(g.note || g.intent || "nothing said yet")}</p><p>${esc(activityDetail(g))}</p><small>${esc(phaseText(g))} · ${esc(new Date(g.lastAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}))}</small></div>`;
-  const expanded = crew.querySelector("details")?.open;
-  crew.innerHTML = `${activityConnected ? "" : "<p>Disconnected — activity is not current.</p>"}<h4>Coding activity</h4>${active.map(row).join("") || "<p>No coding session currently working.</p>"}${uncertain.length?`<h4>Status unknown</h4>${uncertain.map(row).join("")}`:""}<details ${expanded?"open":""}><summary>Recent history · ${history.length}</summary>${history.map(row).join("") || "<p>No recent completed sessions.</p>"}</details>`;
+  const out = AGENTS.filter(g=>g.state==="active"||g.state==="unknown"), home = AGENTS.filter(g=>g.state==="idle").length;
+  document.getElementById("activitybtn").textContent = activityConnected ? `ships · ${out.length}` : "ships · ?";
+  const row = g => `<div class="a ${g.state}${g.phase==="waiting"?" waiting":""}"><b>${esc(g.call)}</b> <span>${esc(phaseText(g))}${g.where?" · "+esc(g.where.area):""}</span><p>${esc(g.note || g.intent || "")}</p></div>`;
+  crew.innerHTML = (activityConnected ? "" : "<p>disconnected — not current</p>") + (out.map(row).join("") || "<p>no ship is out</p>") + (home ? `<p class="home">${home} home</p>` : "");
 }
 document.getElementById("activitybtn").addEventListener("click",()=>{crew.hidden=!crew.hidden; document.getElementById("activitybtn").setAttribute("aria-expanded",String(!crew.hidden)); if(!crew.hidden){renderActivity(); crew.style.right="22px"; crew.style.left="auto"; crew.style.top="auto"; crew.style.bottom="56px"; crew.style.maxHeight="70vh"; crew.style.overflowY="auto";}});
 function setChrome(){
@@ -910,6 +909,7 @@ function showDecide(p){
   document.getElementById("veto").addEventListener("click", () => act("veto"));
 }
 cv.addEventListener("click",(e)=>{
+  if (REDUCED) draw(performance.now());   // no animation loop: draw once so the hit-areas are current
   hover = pick(e.clientX, e.clientY);
   if (planting){ unplant(); return; }
   if (!decideEl.hidden){ decideEl.hidden = true; if (!(hover && hover.desk)) return; }
