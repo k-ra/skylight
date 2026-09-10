@@ -545,14 +545,14 @@ function showDeskItem(it, x, y){
   on("accept", () => post("/api/accept", { area: it.area.name, text: it.text }));
   on("recall", () => post("/api/recall", { area: it.area.name, text: it.text }));
   const rt = document.getElementById("retest"); if (rt) rt.addEventListener("click", (e) => { e.preventDefault(); post("/api/retest", { area: it.area.name, text: it.text }); });
-  const note = document.getElementById("note"); if (note) note.addEventListener("keydown", e => e.stopPropagation());
+  const note = document.getElementById("note"); if (note) note.addEventListener("keydown", e => { e.stopPropagation(); if (e.key==="Escape"){ decideEl.hidden = true; leader = null; } });
   on("acc", () => post("/api/proposal", { name: it.p.name, action:"accept" }));
   on("veto", () => post("/api/proposal", { name: it.p.name, action:"veto" }));
   on("light", () => post("/api/light", { area: it.area.name }));
   on("rec", () => post("/api/reconcile", { area: it.area.name, question: it.text, action:"accept" }));
   on("rej", () => post("/api/reconcile", { area: it.area.name, question: it.text, action:"reject" }));
   on("answer", () => post("/api/answer", { area: it.area.name, question: it.text, text: document.getElementById("ans").value.trim() }));
-  const ans = document.getElementById("ans"); if (ans){ ans.focus(); ans.addEventListener("keydown", e => { e.stopPropagation(); if (e.key==="Enter") document.getElementById("answer").click(); }); }
+  const ans = document.getElementById("ans"); if (ans){ ans.focus(); ans.addEventListener("keydown", e => { e.stopPropagation(); if (e.key==="Enter") document.getElementById("answer").click(); if (e.key==="Escape"){ decideEl.hidden = true; leader = null; } }); }
 }
 let leader = null;
 function drawLeader(){
