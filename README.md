@@ -18,6 +18,7 @@ requires Node 22 or newer and a git repository with a `sky.yaml`.
 git clone https://github.com/k-ra/skylight.git
 cd skylight
 npm install
+npm run init -- /path/to/your/project
 npm start -- /path/to/your/project
 ```
 

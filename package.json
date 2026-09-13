@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "init": "tsx src/init.ts",
     "start": "tsx src/serve.ts",
     "export": "tsx src/serve.ts --export snapshot.html",
     "read": "tsx src/read.ts",
